@@ -28,6 +28,17 @@ def index(request):
     )
 
 
+def signup_list(request):
+    """FOR TEST PURPOSES ONLY."""
+    people = list()
+    # Render the HTML template signup.html with the data in the context variable.
+    return render(
+        request,
+        'catalog/signup_list.html',
+        context={'people': people,},
+    )
+
+
 from django.views import generic
 
 
@@ -123,6 +134,34 @@ def renew_book_librarian(request, pk):
     }
 
     return render(request, 'catalog/book_renew_librarian.html', context)
+
+
+from catalog.forms import SignUpForm
+
+
+def signup(request):
+    """FOR TESTING PURPOSES ONLY."""
+    # If this is a POST request then process the Form data
+    if request.method == 'POST':
+        # Create a form instance and populate it with data from the request (binding):
+        form = SignUpForm(request.POST)
+
+        # Check if the form is valid:
+        if form.is_valid():
+            # process the data in form.cleaned_data as required
+
+            # redirect to a new URL:
+            return HttpResponseRedirect(reverse('signup'))
+
+    # If this is a GET (or any other method) create the default form
+    else:
+        form = SignUpForm()
+
+    context = {
+        'form': form,
+    }
+
+    return render(request, 'catalog/signup.html', context)
 
 
 from django.views.generic.edit import CreateView, UpdateView, DeleteView

@@ -8,7 +8,7 @@ from django import forms
 class RenewBookForm(forms.Form):
     """Form for a librarian to renew books."""
     renewal_date = forms.DateField(
-            help_text="Enter a date between now and 4 weeks (default 3).")
+        help_text="Enter a date between now and 4 weeks (default 3).")
 
     def clean_renewal_date(self):
         data = self.cleaned_data['renewal_date']
@@ -23,3 +23,10 @@ class RenewBookForm(forms.Form):
 
         # Remember to always return the cleaned data.
         return data
+
+
+class SignUpForm(forms.Form):
+    """FOR TESTING PURPOSES ONLY."""
+    name = forms.CharField(max_length=200, help_text="Enter Your Name (max 200 characters).")
+    age = forms.IntegerField(max_value=120, min_value=18,
+                             help_text="Enter your age between 18 (you must be at least 18) and 120 (are you alive?).")

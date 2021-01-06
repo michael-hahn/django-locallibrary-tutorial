@@ -1,0 +1,22 @@
+{% extends "base_generic.html" %}
+
+{% block content %}
+    <h1>Sign-up List</h1>
+
+    {% if people %}
+    <ul>
+
+      {% for person in people %}
+      <li>
+{#        <a href="{{ book.get_absolute_url }}">{{ book.title }}</a> ({{book.author}})#}
+          {{ person }}
+      </li>
+      {% endfor %}
+
+    </ul>
+
+    {% else %}
+      <p>No one signed up so far.</p>
+    {% endif %}
+    <a href="{% url 'new-signup' %}">Sign Up</a>
+{% endblock %}

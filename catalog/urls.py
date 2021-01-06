@@ -38,3 +38,9 @@ urlpatterns += [
     path('book/<int:pk>/update/', views.BookUpdate.as_view(), name='book-update'),
     path('book/<int:pk>/delete/', views.BookDelete.as_view(), name='book-delete'),
 ]
+
+# Add URLConf for testing only
+urlpatterns += [
+    path('signup/', views.signup_list, name='signup'),
+    path('signup/new/', views.signup, name='new-signup'),
+]
