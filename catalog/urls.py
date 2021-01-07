@@ -43,4 +43,5 @@ urlpatterns += [
 urlpatterns += [
     path('signup/', views.signup_list, name='signup'),
     path('signup/new/', views.signup, name='new-signup'),
+    path('signup/delete/', views.signup_delete, name='delete-signup'),
 ]

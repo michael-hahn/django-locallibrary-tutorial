@@ -3,13 +3,13 @@
 {% block content %}
     <h1>Sign-up List</h1>
 
-    {% if people %}
+    {% if signups %}
     <ul>
 
-      {% for person in people %}
+      {% for person in signups %}
       <li>
 {#        <a href="{{ book.get_absolute_url }}">{{ book.title }}</a> ({{book.author}})#}
-          {{ person }}
+          {{ person.key }} ({{ person.val }})
       </li>
       {% endfor %}
 
@@ -18,5 +18,6 @@
     {% else %}
       <p>No one signed up so far.</p>
     {% endif %}
-    <a href="{% url 'new-signup' %}">Sign Up</a>
+    <a href="{% url 'new-signup' %}">Sign Up</a><br />
+    <a href="{% url 'delete-signup' %}">Remove Sign-Up</a>
 {% endblock %}
