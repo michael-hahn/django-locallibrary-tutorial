@@ -273,7 +273,7 @@ class BinarySearchTree(object):
         self.root = BiNode(val, key=key)
 
     def _insert_node(self, curr, val, key=None):
-        """Only unique values (or keys if exist) inserted modify the tree"""
+        """Only unique values (or keys if exist) inserted modify the tree."""
         if key and key < curr.key or not key and val < curr.val:
             if curr.left_child:
                 self._insert_node(curr.left_child, val, key)
@@ -287,8 +287,27 @@ class BinarySearchTree(object):
         else:
             pass
 
+    def find(self, key_or_val):
+        """Return the node if value (or key if exists) in the tree."""
+        return self._find_node(self.root, key_or_val)
+
+    def _find_node(self, curr, key_or_val):
+        """Find a node based on the given value (or key if exists)."""
+        if not curr:
+            return None
+        curr_val = curr.val
+        if curr.key:
+            curr_val = curr.key
+
+        if key_or_val == curr_val:
+            return curr
+        elif key_or_val > curr_val:
+            return self._find_node(curr.right_child, key_or_val)
+        else:
+            return self._find_node(curr.left_child, key_or_val)
+
     def _max_value(self, node):
-        """The maximum value (or key is exists) of a (sub)tree rooted at node."""
+        """The maximum value (or key if exists) of a (sub)tree rooted at node."""
         if node is None:
             return False
         if node.right_child:
@@ -349,6 +368,9 @@ class BinarySearchTree(object):
 
     def to_ordered_list(self, node, ordered_list):
         """Convert the tree into an ordered list of nodes."""
+        if node is None:
+            return ordered_list
+
         if node.left_child:
             self.to_ordered_list(node.left_child, ordered_list)
         ordered_list.append(node)
@@ -366,6 +388,10 @@ class BinarySearchTree(object):
             else:
                 printout += "{value} ".format(value=node.val)
         return printout
+
+
+# FOR TESTING PURPOSES ONLY.
+sign_up_sheet = BinarySearchTree()
 
 
 if __name__ == "__main__":
