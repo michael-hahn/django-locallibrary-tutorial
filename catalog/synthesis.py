@@ -67,6 +67,15 @@ class Synthesizer(object):
         else:
             return None
 
+    def simple_synthesis(self, value):
+        """Synthesis by simply wrapping value in an Untrusted type
+        (e.g., wrap Int to UntrustedInt) and set the type's
+        synthesized flag to True."""
+        raise NotImplementedError("simple_synthesis() is not overridden "
+                                  "in <{subclass}>, subclassed from <{superclass}>.".
+                                  format(subclass=self.__class__.__name__,
+                                         superclass=type(self).__base__.__name__))
+
     def reset_constraints(self):
         self.solver.reset()
 
@@ -86,6 +95,9 @@ class IntSynthesizer(Synthesizer):
 
     def to_python(self, value):
         return UntrustedInt(value.as_long(), synthesized=True)
+
+    def simple_synthesis(self, value):
+        return UntrustedInt(value, synthesized=True)
 
 
 class StrSynthesizer(Synthesizer):
@@ -310,6 +322,9 @@ class StrSynthesizer(Synthesizer):
 
     def to_python(self, value):
         return UntrustedStr(value.as_string(), synthesized=True)
+
+    def simple_synthesis(self, value):
+        return UntrustedStr(value, synthesized=True)
 
 
 if __name__ == "__main__":
