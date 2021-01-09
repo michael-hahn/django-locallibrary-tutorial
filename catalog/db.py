@@ -5,7 +5,7 @@ from catalog.synthesis import IntSynthesizer, StrSynthesizer
 class BiNode(object):
     """Node class with two children."""
     def __init__(self, val, *, key=None):
-        """Use key for organization if exists; otherwise, use val"""
+        """Use key for organization if exists; otherwise, use val."""
         self._val = val
         self._key = key
         self._left = None
@@ -53,10 +53,14 @@ class BinarySearchTree(object):
         self.root = None
 
     def insert(self, val, key=None):
+        """Insert a value (or key/value pair if keys are used) to a BST.
+        Returns False if insertion failed (e.g., if a key/value pair
+        is given to be inserted into a value-only tree). This is the
+        public API to construct a new tree or add new nodes to an existing tree."""
         if self.root is None:
             self._set_root(val, key)
         else:
-            # BST nodes either all have a key or none of the nodes have a key
+            # BST nodes either all have a key or none of the nodes have a key!
             if self.root.has_key() and not key:
                 return False
             elif not self.root.has_key() and key:
@@ -65,10 +69,16 @@ class BinarySearchTree(object):
                 self._insert_node(self.root, val, key)
 
     def _set_root(self, val, key=None):
+        """Application should not call this function directly.
+        Always call the public API insert() to construct a new tree."""
         self.root = BiNode(val, key=key)
 
     def _insert_node(self, curr, val, key=None):
-        """Only unique values (or keys if exist) inserted modify the tree."""
+        """Only unique values (or keys if exist) inserted modify the tree.
+        If insertion is not successful (e.g., val is the same as a node
+        already in the tree), it returns False. Application should not call
+        this function directly. Always call the public API insert() to add
+        new nodes to an existing tree."""
         if key and key < curr.key or not key and val < curr.val:
             if curr.left_child:
                 self._insert_node(curr.left_child, val, key)
@@ -80,14 +90,18 @@ class BinarySearchTree(object):
             else:
                 curr.right_child = BiNode(val, key=key)
         else:
-            pass
+            return False
 
     def find(self, key_or_val):
-        """Return the node if value (or key if exists) in the tree."""
+        """Return the node if value (or key if exists) is in the
+        tree; otherwise, return None. This is the public API to
+        find a node in a tree."""
         return self._find_node(self.root, key_or_val)
 
     def _find_node(self, curr, key_or_val):
-        """Find a node based on the given value (or key if exists)."""
+        """Find a node based on the given value (or key if exists).
+        Returns None if the value (or key) does not exist in the
+        tree. Application should call the public API find() instead."""
         if not curr:
             return None
         curr_val = curr.val
@@ -102,7 +116,8 @@ class BinarySearchTree(object):
             return self._find_node(curr.left_child, key_or_val)
 
     def _max_value(self, node):
-        """The maximum value (or key if exists) of a (sub)tree rooted at node."""
+        """The maximum value (or key if exists) of a (sub)tree rooted at node.
+        The maximum value is the node itself if it has no right subtree."""
         if node is None:
             return False
         if node.right_child:
@@ -114,7 +129,8 @@ class BinarySearchTree(object):
                 return node.val
 
     def _min_value(self, node):
-        """The minimum value (or key if exists) of a (sub)tree rooted at node."""
+        """The minimum value (or key if exists) of a (sub)tree rooted at node.
+        The minimum value is the node itself if it has no left subtree."""
         if node is None:
             return False
         if node.left_child:
@@ -126,44 +142,49 @@ class BinarySearchTree(object):
                 return node.val
 
     def synthesize(self, node):
-        """Synthesize the value (or key if exists) of a node."""
-        # TODO: CRITICAL! In some cases, synthesis value
-        #  should take into consideration the parent value!
+        """Synthesize the value (or key if exists) of a node.
+        Only performs bounded value synthesis if both upper
+        and lower bound exist for the node. Otherwise, returns
+        False. If synthesis failed for any reason, it returns
+        False as well. If synthesis succeeded, return True."""
         upper_bound = self._min_value(node.right_child)
         lower_bound = self._max_value(node.left_child)
-        # If neither bound exists, no synthesis
-        if not upper_bound and not lower_bound:
-            # TODO: consider a random value as synthesized value?
-            #  If so, handle this case in each specific type.
+        # If at most one bound exists, no synthesis
+        if not upper_bound or not lower_bound:
             return False
         # Synthesize either the key (if exists) or val
+        # How key (or val) is synthesized is based on
+        # its type, so we obtain the type first.
+        synthesize_type = type(node.val).__name__
         if node.key:
             synthesize_type = type(node.key).__name__
-        else:
-            synthesize_type = type(node.val).__name__
 
         if synthesize_type == 'int' or synthesize_type == 'UntrustedInt':
             synthesizer = IntSynthesizer()
         elif synthesize_type == 'str' or synthesize_type == 'UntrustedStr':
             synthesizer = StrSynthesizer()
         else:
-            raise NotImplementedError("")
+            raise NotImplementedError("We cannot synthesize value of type "
+                                      "{type} yet".format(type=synthesize_type))
         synthesized_value = synthesizer.bounded_synthesis(upper_bound=upper_bound, lower_bound=lower_bound)
 
         # Synthesis failed if synthesized_value is None
         if synthesized_value is None:
             return False
+        # Finally, if synthesis succeeded, replace the val
+        # (or key if exists) with the synthesized value.
         else:
             if node.key:
                 node.key = synthesized_value
-                # If a key is synthesized, val is automatically set to None
+                # If a key is synthesized, val is set to None
                 node.val = None
             else:
                 node.val = synthesized_value
             return True
 
     def to_ordered_list(self, node, ordered_list):
-        """Convert the tree into an ordered list of nodes."""
+        """Convert the tree into an in-ordered list of nodes.
+        The list is stored at ordered_list parameter."""
         if node is None:
             return ordered_list
 
