@@ -142,16 +142,15 @@ class BinarySearchTree(object):
                 return node.val
 
     def synthesize(self, node):
-        """Synthesize the value (or key if exists) of a node.
+        """Synthesize the val (or key if exists) of a node.
         Only performs bounded value synthesis if both upper
-        and lower bound exist for the node. Otherwise, returns
-        False. If synthesis failed for any reason, it returns
-        False as well. If synthesis succeeded, return True."""
+        and lower bound exist for the node. Otherwise, create
+        an Untrusted val (or key if exists) of the same value
+        and with the synthesized flag set. If synthesis
+        failed for any reason, return False. If synthesis
+        succeeded, return True."""
         upper_bound = self._min_value(node.right_child)
         lower_bound = self._max_value(node.left_child)
-        # If at most one bound exists, no synthesis
-        if not upper_bound or not lower_bound:
-            return False
         # Synthesize either the key (if exists) or val
         # How key (or val) is synthesized is based on
         # its type, so we obtain the type first.
@@ -166,9 +165,20 @@ class BinarySearchTree(object):
         else:
             raise NotImplementedError("We cannot synthesize value of type "
                                       "{type} yet".format(type=synthesize_type))
-        synthesized_value = synthesizer.bounded_synthesis(upper_bound=upper_bound, lower_bound=lower_bound)
 
-        # Synthesis failed if synthesized_value is None
+        # If at most one bound exists, do simple synthesis
+        if not upper_bound or not lower_bound:
+            if node.key:
+                synthesized_value = synthesizer.simple_synthesis(node.key)
+            else:
+                synthesized_value = synthesizer.simple_synthesis(node.val)
+        else:
+            # Do bounded synthesis if both bounds exist
+            synthesized_value = synthesizer.bounded_synthesis(upper_bound=upper_bound,
+                                                              lower_bound=lower_bound)
+
+        # Some synthesis can fail; synthesis
+        # failed if synthesized_value is None
         if synthesized_value is None:
             return False
         # Finally, if synthesis succeeded, replace the val
@@ -176,11 +186,10 @@ class BinarySearchTree(object):
         else:
             if node.key:
                 node.key = synthesized_value
-                # If a key is synthesized, val is set to None
                 node.val = None
             else:
                 node.val = synthesized_value
-            return True
+        return True
 
     def to_ordered_list(self, node, ordered_list):
         """Convert the tree into an in-ordered list of nodes.
