@@ -4,6 +4,8 @@ from z3 import String, StringVal, Length, SubSeq, Concat
 from z3 import Re, InRe, Union, Star, Plus
 from z3 import Int
 
+from django.core.untrustedtypes import UntrustedInt, UntrustedStr
+
 
 class Synthesizer(object):
     """Synthesis base class."""
@@ -35,9 +37,9 @@ class Synthesizer(object):
             return None
 
     def to_python(self, value):
-        """Convert the value of Z3 type to regular
-        Python type (e.g., from z3.IntNumRef to Int)
-        depend on the type of _var."""
+        """Convert the value of Z3 type to Untrusted
+        Python type (e.g., from z3.IntNumRef to
+        UntrustedInt) depend on the type of _var."""
         raise NotImplementedError("to_python() is not overridden in <{subclass}>, "
                                   "subclassed from <{superclass}>.".
                                   format(subclass=self.__class__.__name__,
@@ -83,7 +85,7 @@ class IntSynthesizer(Synthesizer):
             self.solver.add(self.var > lower_bound)
 
     def to_python(self, value):
-        return value.as_long()
+        return UntrustedInt(value.as_long(), synthesized=True)
 
 
 class StrSynthesizer(Synthesizer):
@@ -307,7 +309,7 @@ class StrSynthesizer(Synthesizer):
         self.solver.add(InRe(self.var, template))
 
     def to_python(self, value):
-        return value.as_string()
+        return UntrustedStr(value.as_string(), synthesized=True)
 
 
 if __name__ == "__main__":
