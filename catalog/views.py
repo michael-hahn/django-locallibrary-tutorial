@@ -125,12 +125,12 @@ def renew_book_librarian(request, pk):
     return render(request, 'catalog/book_renew_librarian.html', context)
 
 
-from catalog.db import sign_up_sheet
+from catalog.cache import sign_up_sheet
 from catalog.forms import SignUpForm, RemoveForm
 
 
 def signup(request):
-    """FOR TESTING PURPOSES ONLY."""
+    """View function for user signup in the sign-up form."""
     # If this is a POST request then process the Form data
     if request.method == 'POST':
         # Create a form instance and populate it with data from the request (binding):
@@ -156,7 +156,7 @@ def signup(request):
 
 
 def signup_delete(request):
-    """FOR TESTING PURPOSES ONLY."""
+    """View function for user removing their name from the sign-up form."""
     # If this is a POST request then process the Form data
     if request.method == 'POST':
         # Create a form instance and populate it with data from the request (binding):
@@ -183,7 +183,7 @@ def signup_delete(request):
 
 
 def signup_list(request):
-    """FOR TESTING PURPOSES ONLY."""
+    """View function for displaying users who have signed up."""
     sign_ups = list()
     sign_up_sheet.to_ordered_list(sign_up_sheet.root, sign_ups)
     # Render the HTML template signup.html with the data in the context variable.

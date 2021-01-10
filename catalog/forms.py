@@ -4,7 +4,7 @@ import datetime  # for checking renewal date range.
 
 from django import forms
 
-from catalog.db import sign_up_sheet
+from catalog.cache import sign_up_sheet
 
 
 class RenewBookForm(forms.Form):
@@ -28,14 +28,14 @@ class RenewBookForm(forms.Form):
 
 
 class SignUpForm(forms.Form):
-    """FOR TESTING PURPOSES ONLY."""
-    name = forms.CharField(max_length=200, help_text="Enter Your Name (max 200 characters).")
+    """Form for a user to sign up."""
+    name = forms.CharField(max_length=200, help_text="Sign Up Your Name (max 200 characters).")
     age = forms.IntegerField(max_value=120, min_value=18,
                              help_text="Enter your age between 18 (you must be at least 18) and 120 (are you alive?).")
 
 
 class RemoveForm(forms.Form):
-    """FOR TESTING PURPOSES ONLY."""
+    """Form for a user to remove themselves from sign up."""
     name = forms.CharField(max_length=200, help_text="Enter Your Signed-Up Name (max 200 characters).")
 
     def clean_name(self):

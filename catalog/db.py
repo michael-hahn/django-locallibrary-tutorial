@@ -216,10 +216,6 @@ class BinarySearchTree(object):
         return printout
 
 
-# FOR TESTING PURPOSES ONLY.
-sign_up_sheet = BinarySearchTree()
-
-
 if __name__ == "__main__":
     bst = BinarySearchTree()
     bst.insert(UntrustedStr("Jake"), UntrustedInt(7))

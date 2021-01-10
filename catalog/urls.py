@@ -39,7 +39,7 @@ urlpatterns += [
     path('book/<int:pk>/delete/', views.BookDelete.as_view(), name='book-delete'),
 ]
 
-# Add URLConf for testing only
+# Add URLConf for use sign up or remove user from a sign up sheet
 urlpatterns += [
     path('signup/', views.signup_list, name='signup'),
     path('signup/new/', views.signup, name='new-signup'),
