@@ -127,7 +127,7 @@ def renew_book_librarian(request, pk):
 
 from catalog.cache import sign_up_sheet
 from catalog.forms import SignUpForm, RemoveForm
-
+from django.core.untrustedtypes import UntrustedInt, UntrustedStr
 
 def signup(request):
     """View function for user signup in the sign-up form."""
@@ -139,7 +139,8 @@ def signup(request):
         # Check if the form is valid:
         if form.is_valid():
             # process the data in form.cleaned_data as required
-            sign_up_sheet.insert(form.cleaned_data['age'], form.cleaned_data['name'])
+            sign_up_sheet.insert(UntrustedInt(form.cleaned_data['age']),
+                                 UntrustedStr(form.cleaned_data['name']))
 
             # redirect to a new URL:
             return HttpResponseRedirect(reverse('signup'))
@@ -186,11 +187,17 @@ def signup_list(request):
     """View function for displaying users who have signed up."""
     sign_ups = list()
     sign_up_sheet.to_ordered_list(sign_up_sheet.root, sign_ups)
+    # Only include valid, non-synthesized data
+    valid_sign_ups = list()
+    for person in sign_ups:
+        if not person.key.synthesized:
+            valid_sign_ups.append(person)
     # Render the HTML template signup.html with the data in the context variable.
     return render(
         request,
         'catalog/signup_list.html',
-        context={'signups': sign_ups,},
+        context={'signups': valid_sign_ups,
+                 },
     )
 
 
