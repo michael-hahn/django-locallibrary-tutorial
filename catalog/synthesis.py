@@ -3,6 +3,7 @@ from z3 import Solver, sat
 from z3 import String, StringVal, Length, SubSeq, Concat
 from z3 import Re, InRe, Union, Star, Plus
 from z3 import Int
+from z3 import BitVec
 
 from django.core.untrustedtypes import UntrustedInt, UntrustedStr
 
@@ -29,6 +30,26 @@ class Synthesizer(object):
         cases like string, this function should be overridden."""
         self.solver.add(self.var > value)
 
+    def eq_constraint(self, func, value, **kargs):
+        """Add to solver an equal-to constraints:
+        func(self.var, **kargs) == value. Note that
+        func can be any custom function but operations
+        in func must be supported by the Z3 variable
+        type. For example, Z3's Int() does not support
+        << (bit shift); therefore, func cannot have
+        operations that use << to manipulate Int() variable.
+        func can take any number of *keyed* arguments
+        but the first argument (required, non-keyed)
+        must be the value to be synthesized. In summary,
+        not all func can be supported for synthesis!
+
+        This is most useful for func to be a custom hash
+        function so func is expected to have operations
+        like <<, >>, +, -. If this is the use case, one
+        should use BitVec for the synthesis value since
+        BitVec supports << and >> in Z3."""
+        self.solver.add(func(self.var, **kargs) == value)
+
     def _bounded_constraints(self, upper_bound, lower_bound, **kargs):
         """Add to solver constraints derived from an upper bound and
         a lower bound, both of which must exist (otherwise, one should
@@ -38,10 +59,10 @@ class Synthesizer(object):
         directly; instead, subclass should call bounded_synthesis().
         Note that this function is implemented mostly for convenience;
         In most cases, one can easily combine lt_constraint() and
-        gt_constraint() to create the same bounded constraints."""
-        raise NotImplementedError("It seems like <{subclass}> does not support "
-                                  "synthesis through bounds because it is not "
-                                  "overridden.".format(subclass=self.__class__.__name__))
+        gt_constraint() to create the same bounded constraints. In
+        some cases like string, this function should be overridden."""
+        self.lt_constraint(upper_bound)
+        self.gt_constraint(lower_bound)
 
     def is_satisfied(self):
         """Returns True if given constraints can be satisfied."""
@@ -101,14 +122,9 @@ class Synthesizer(object):
 
 
 class IntSynthesizer(Synthesizer):
-    """Synthesize integer value, subclass from Synthesizer."""
+    """Synthesize an integer value, subclass from Synthesizer."""
     def __init__(self):
         super().__init__(Int('var'))
-
-    def _bounded_constraints(self, upper_bound, lower_bound, **kargs):
-        """upper_bound and lower_bound must exist and be integers."""
-        self.lt_constraint(upper_bound)
-        self.gt_constraint(lower_bound)
 
     def to_python(self, value):
         return UntrustedInt(value.as_long(), synthesized=True)
@@ -117,8 +133,23 @@ class IntSynthesizer(Synthesizer):
         return UntrustedInt(value, synthesized=True)
 
 
+class BitVecSynthesizer(Synthesizer):
+    """Synthesize bit vector value, subclass from Synthesizer."""
+    def __init__(self, bits=32):
+        """Create a bit-vector variable in Z3
+        named b with given (32 by default) bits."""
+        super().__init__(BitVec('b', bits))
+
+    def to_python(self, value):
+        return UntrustedInt(value.as_long(), synthesized=True)
+
+    def simple_synthesis(self, value):
+        """Python can automatically convert a bit vector to int."""
+        return UntrustedInt(value, synthesized=True)
+
+
 class StrSynthesizer(Synthesizer):
-    """Synthesize string value, subclass from Synthesizer."""
+    """Synthesize a string value, subclass from Synthesizer."""
     DEFAULT_UPPER_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     DEFAULT_LOWER_CHARS = "abcdefghijklmnopqrstuvwxyz"
     DEFAULT_NUM_CHARS = "0123456789"
@@ -287,6 +318,16 @@ if __name__ == "__main__":
     int_val = synthesizer.to_python(synthesizer.value)
     assert int_val > 7, "{val} should be larger than 21, but it is not.".format(val=int_val)
 
+    # Define a simple function that can take Z3's Int type
+    def calc(x, *, y):
+        """* is needed so that y is a keyed argument!"""
+        return x + y * y
+
+    synthesizer.reset_constraints()
+    synthesizer.eq_constraint(calc, 40, y=5)   # y is a keyed argument
+    int_val = synthesizer.to_python(synthesizer.value)
+    assert int_val == 15, "{val} should be equal to 15, but it is not.".format(val=int_val)
+
     synthesizer = StrSynthesizer()
     synthesizer.lt_constraint("A")
     str_val = synthesizer.to_python(synthesizer.value)
@@ -324,3 +365,27 @@ if __name__ == "__main__":
 
     str_val = synthesizer.bounded_synthesis(upper_bound="zzzB", lower_bound="zzz")
     assert str_val == "zzzA", "{val} should be the same as 'zzzA', but it is not.".format(val=str_val)
+
+    synthesizer = BitVecSynthesizer()
+    synthesizer.gt_constraint(43)   # BitVec supports base class >
+    bitvec_val = synthesizer.to_python(synthesizer.value)
+    assert bitvec_val > 43, "{val} should be larger than 43, but it is not.".format(val=bitvec_val)
+    synthesizer.reset_constraints()
+    synthesizer.lt_constraint(25)  # BitVec supports base class <
+    bitvec_val = synthesizer.to_python(synthesizer.value)
+    assert bitvec_val < 25, "{val} should be smaller than 25, but it is not.".format(val=bitvec_val)
+    synthesizer.reset_constraints()
+    synthesizer.bounded_synthesis(upper_bound=40, lower_bound=25)
+    bitvec_val = synthesizer.to_python(synthesizer.value)
+    assert bitvec_val > 25, "{val} should be larger than 25, but it is not.".format(val=bitvec_val)
+    assert bitvec_val < 40, "{val} should be smaller than than 40, but it is not.".format(val=bitvec_val)
+
+    # Define a hash function
+    def shr32(v, *, n):
+        """v must be of Z3's BitVec type to support >> and <<."""
+        return (v >> n) & ((1 << (32 - n)) - 1)
+
+    synthesizer.reset_constraints()
+    synthesizer.eq_constraint(shr32, 0x3E345C, n=2)
+    bitvec_val = synthesizer.to_python(synthesizer.value)
+    assert bitvec_val == 16306544, "{val} should be equal to 16306544, but it is not.".format(val=bitvec_val)
