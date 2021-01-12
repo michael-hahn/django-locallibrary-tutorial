@@ -4,6 +4,7 @@ from z3 import String, StringVal, Length, SubSeq, Concat
 from z3 import Re, InRe, Union, Star, Plus
 from z3 import Int
 from z3 import BitVec
+from z3 import Or
 
 from django.core.untrustedtypes import UntrustedInt, UntrustedStr
 
@@ -57,13 +58,42 @@ class Synthesizer(object):
         function so func is expected to have operations
         like <<, >>, +, -. If this is the use case, one
         should use BitVec for the synthesis value since
-        BitVec supports << and >> in Z3."""
+        BitVec supports << and >> in Z3.
+
+        Note that func can return self.var itself to
+        create a trivial equal-to constraint."""
         self.solver.add(func(self.var, **kargs) == value)
+
+    def le_constraint(self, values, **kargs):
+        """Add to solver a less-than-or-equal-to constraint:
+        values can be a single value or a *list* of values:
+        for v in values, self.var < v. By default, we assume that
+        the type of the values can be handled by Z3 directly with <=,
+        such as list of integer, but this is not always the case.
+        In some cases like string, this function should be overridden."""
+        if isinstance(values, list):
+            for v in values:
+                self.solver.add(self.var <= v)
+        else:
+            self.solver.add(self.var <= values)
+
+    def ge_constraint(self, values, **kargs):
+        """Add to solver a greater-than-or-equal-to constraint:
+        values can be a single value or a *list* of values: for v in
+        values, self.var >= v. By default, we assume that the type
+        of the values can be handled by Z3 directly with >=, such
+        as integer, but this is not always the case. In some
+        cases like string, this function should be overridden."""
+        if isinstance(values, list):
+            for v in values:
+                self.solver.add(self.var >= v)
+        else:
+            self.solver.add(self.var >= values)
 
     def _bounded_constraints(self, upper_bound, lower_bound, **kargs):
         """Add to solver constraints derived from an upper bound and
-        a lower bound, both of which must exist (otherwise, one should
-        call either lt_constraint() or gt_constraint() instead).
+        a lower bound (not inclusive), both of which must exist (if
+        not, call either lt_constraint() or gt_constraint() instead).
         Subclass should implement this function if the synthesizer
         allows bounded constraints but it should not call this function
         directly; instead, subclass should call bounded_synthesis().
@@ -90,15 +120,16 @@ class Synthesizer(object):
     def to_python(self, value):
         """Convert the value of Z3 type to Untrusted
         Python type (e.g., from z3.IntNumRef to
-        UntrustedInt) depend on the type of _var."""
+        UntrustedInt) depend on the type of _var.
+        Returns None if value is None."""
         raise NotImplementedError("to_python() is not overridden in <{subclass}>, "
                                   "subclassed from <{superclass}>.".
                                   format(subclass=self.__class__.__name__,
                                          superclass=type(self).__base__.__name__))
 
     def bounded_synthesis(self, *, upper_bound=None, lower_bound=None, **kargs):
-        """Synthesis based on an upper and a lower bound, both
-        of which must exist! The data type of upper_bound and
+        """Synthesis based on an upper and a lower bound (not inclusive),
+        both of which must exist! The data type of upper_bound and
         lower_bound must be able to be compared and upper_bound
         must be larger than lower_bound. Subclasses must override
         _bounded_constraints() and call this function
@@ -121,7 +152,7 @@ class Synthesizer(object):
     def simple_synthesis(self, value):
         """Synthesis by simply wrapping value in an Untrusted type
         (e.g., wrap Int to UntrustedInt) and set the type's
-        synthesized flag to True."""
+        synthesized flag to True. Returns None if value is None."""
         raise NotImplementedError("simple_synthesis() is not overridden "
                                   "in <{subclass}>, subclassed from <{superclass}>.".
                                   format(subclass=self.__class__.__name__,
@@ -137,10 +168,16 @@ class IntSynthesizer(Synthesizer):
         super().__init__(Int('var'))
 
     def to_python(self, value):
-        return UntrustedInt(value.as_long(), synthesized=True)
+        if value is not None:
+            return UntrustedInt(value.as_long(), synthesized=True)
+        else:
+            return None
 
     def simple_synthesis(self, value):
-        return UntrustedInt(value, synthesized=True)
+        if value is not None:
+            return UntrustedInt(value, synthesized=True)
+        else:
+            return None
 
 
 class BitVecSynthesizer(Synthesizer):
@@ -151,11 +188,17 @@ class BitVecSynthesizer(Synthesizer):
         super().__init__(BitVec('b', bits))
 
     def to_python(self, value):
-        return UntrustedInt(value.as_long(), synthesized=True)
+        if value is not None:
+            return UntrustedInt(value.as_long(), synthesized=True)
+        else:
+            return None
 
     def simple_synthesis(self, value):
         """Python can automatically convert a bit vector to int."""
-        return UntrustedInt(value, synthesized=True)
+        if value is not None:
+            return UntrustedInt(value, synthesized=True)
+        else:
+            return None
 
 
 class StrSynthesizer(Synthesizer):
@@ -183,7 +226,7 @@ class StrSynthesizer(Synthesizer):
         try to remove the last character in value and use a shorter string.
         If there is no string smaller than value, an empty string is returned.
         The constraint is a regular expression template added to the solver.
-        value cannot be an empty string!
+        If value is an empty string, the synthesis will always fail!
         e.g., (assume the default charset)
         * "Jack" -> "[A-I]*"
         * "Adam" -> "A[A-Za-c]*" (the first "A" must be in template)
@@ -195,7 +238,27 @@ class StrSynthesizer(Synthesizer):
         0 to offset would be the same in synthesized string as in value
         (if offset < the length of the value). Offset is by default 0."""
         if not value:
-            raise ValueError("value cannot be an empty string!")
+            # For an empty string value, we add
+            # False so synthesis always return 'unsat'.
+            self.solver.add(False)
+        else:
+            template = self._lt_constraint(value, **kargs)
+            self.solver.add(InRe(self.var, template))
+
+    def le_constraint(self, value, **kargs):
+        """The same rules as in lt_constraint() except that
+        the synthesized string can be the same as value."""
+        lt_template = self._lt_constraint(value, **kargs)
+        eq_template = Re(StringVal(value))
+        self.solver.add(Or(InRe(self.var, lt_template), InRe(self.var, eq_template)))
+
+    def _lt_constraint(self, value, **kargs):
+        """Helper function for lt_constraint(). Returns the template
+        to synthesize a string (or ValueError). See lt_constraint()
+        for more detailed description. User should always call
+        lt_constraint() as the public API, but not this function.
+
+        value should never be an empty string in this function."""
         # Create a regular expression template for synthesis
         bound_length = len(value)
         offset = 0
@@ -232,7 +295,7 @@ class StrSynthesizer(Synthesizer):
             char = Union([Re(StringVal(c)) for c in possible_charset])
             template = Concat(Re(StringVal(value[:offset])), char, Star(self._chars))
         # Our synthesized string should match the template
-        self.solver.add(InRe(self.var, template))
+        return template
 
     def gt_constraint(self, value, **kargs):
         """Override base class gt_constraint(). We find the first character
@@ -251,6 +314,21 @@ class StrSynthesizer(Synthesizer):
         useful for bounded synthesis. If provided, characters in position
         0 to offset would be the same in synthesized string as in value
         (if offset < the length of the value). Offset is by default 0."""
+        template = self._gt_constraint(value, **kargs)
+        self.solver.add(InRe(self.var, template))
+
+    def ge_constraint(self, value, **kargs):
+        """The same rules as in gt_constraint() except that
+        the synthesized string can be the same as value."""
+        gt_template = self._gt_constraint(value, **kargs)
+        eq_template = Re(StringVal(value))
+        self.solver.add(Or(InRe(self.var, gt_template), InRe(self.var, eq_template)))
+
+    def _gt_constraint(self, value, **kargs):
+        """Helper function for gt_constraint(). Returns the template
+        to synthesize a string (or ValueError). See gt_constraint()
+        for more detailed description. User should always call
+        gt_constraint() as the public API, but not this function."""
         bound_length = len(value)
         if bound_length == 0:
             # If value is an empty string, any non-empty string will do
@@ -293,7 +371,7 @@ class StrSynthesizer(Synthesizer):
                 char = Union([Re(StringVal(c)) for c in possible_charset])
                 template = Concat(Re(StringVal(value[:offset])), char, Star(self._chars))
         # Our synthesized string should match the template
-        self.solver.add(InRe(self.var, template))
+        return template
 
     def _bounded_constraints(self, upper_bound, lower_bound, **kargs):
         """We cannot simply add lt_constraint() and gt_constraint() without
@@ -308,10 +386,16 @@ class StrSynthesizer(Synthesizer):
         self.gt_constraint(lower_bound, offset=bound_length)
 
     def to_python(self, value):
-        return UntrustedStr(value.as_string(), synthesized=True)
+        if value is not None:
+            return UntrustedStr(value.as_string(), synthesized=True)
+        else:
+            return None
 
     def simple_synthesis(self, value):
-        return UntrustedStr(value, synthesized=True)
+        if value is not None:
+            return UntrustedStr(value, synthesized=True)
+        else:
+            return None
 
 
 if __name__ == "__main__":
@@ -324,9 +408,17 @@ if __name__ == "__main__":
     int_val = synthesizer.to_python(synthesizer.value)
     assert int_val < 34, "{val} should be smaller than than 34, but it is not.".format(val=int_val)
     synthesizer.reset_constraints()
+    synthesizer.lt_constraint([34, 45, -3])
+    int_val = synthesizer.to_python(synthesizer.value)
+    assert int_val < -3, "{val} should be smaller than than -3, but it is not.".format(val=int_val)
+    synthesizer.reset_constraints()
     synthesizer.gt_constraint(21)
     int_val = synthesizer.to_python(synthesizer.value)
     assert int_val > 7, "{val} should be larger than 21, but it is not.".format(val=int_val)
+    synthesizer.reset_constraints()
+    synthesizer.gt_constraint([21, 100, -45])
+    int_val = synthesizer.to_python(synthesizer.value)
+    assert int_val > 100, "{val} should be larger than 100, but it is not.".format(val=int_val)
 
     # Define a simple function that can take Z3's Int type
     def calc(x, *, y):
@@ -341,11 +433,11 @@ if __name__ == "__main__":
     synthesizer = StrSynthesizer()
     synthesizer.lt_constraint("A")
     str_val = synthesizer.to_python(synthesizer.value)
-    assert str_val < "A", "{val} should be smaller than than 'A', but it is not.".format(val=str_val)
+    assert str_val < "A", "{val} should be smaller than 'A', but it is not.".format(val=str_val)
     synthesizer.reset_constraints()
     synthesizer.lt_constraint("AA")
     str_val = synthesizer.to_python(synthesizer.value)
-    assert str_val < "AA", "{val} should be smaller than than 'AA', but it is not.".format(val=str_val)
+    assert str_val < "AA", "{val} should be smaller than 'AA', but it is not.".format(val=str_val)
     synthesizer.reset_constraints()
     synthesizer.lt_constraint("Jack")
     str_val = synthesizer.to_python(synthesizer.value)
@@ -353,26 +445,40 @@ if __name__ == "__main__":
     synthesizer.reset_constraints()
     synthesizer.lt_constraint("Adam")
     str_val = synthesizer.to_python(synthesizer.value)
-    assert str_val < "Adam", "{val} should be smaller than than 'Adam', but it is not.".format(val=str_val)
+    assert str_val < "Adam", "{val} should be smaller than 'Adam', but it is not.".format(val=str_val)
     synthesizer.reset_constraints()
-
+    synthesizer.lt_constraint("")
+    str_val = synthesizer.to_python(synthesizer.value)
+    assert str_val is None, "{val} should be None, but it is not.".format(val=str_val)
+    synthesizer.reset_constraints()
     synthesizer.gt_constraint("z")
     str_val = synthesizer.to_python(synthesizer.value)
-    assert str_val > "z", "{val} should be larger than than 'z', but it is not.".format(val=str_val)
+    assert str_val > "z", "{val} should be larger than 'z', but it is not.".format(val=str_val)
     synthesizer.reset_constraints()
     synthesizer.gt_constraint("")
     str_val = synthesizer.to_python(synthesizer.value)
-    assert str_val > "", "{val} should be larger than than '', but it is not.".format(val=str_val)
+    assert str_val > "", "{val} should be larger than '', but it is not.".format(val=str_val)
     synthesizer.reset_constraints()
     synthesizer.gt_constraint("Jack")
     str_val = synthesizer.to_python(synthesizer.value)
-    assert str_val > "Jack", "{val} should be larger than than 'Jack', but it is not.".format(val=str_val)
+    assert str_val > "Jack", "{val} should be larger than 'Jack', but it is not.".format(val=str_val)
     synthesizer.reset_constraints()
     synthesizer.gt_constraint("zza")
     str_val = synthesizer.to_python(synthesizer.value)
-    assert str_val > "zza", "{val} should be larger than than 'zza', but it is not.".format(val=str_val)
+    assert str_val > "zza", "{val} should be larger than 'zza', but it is not.".format(val=str_val)
     synthesizer.reset_constraints()
-
+    synthesizer.le_constraint("")
+    str_val = synthesizer.to_python(synthesizer.value)
+    assert str_val <= "", "{val} should be smaller than or equal to '', but it is not.".format(val=str_val)
+    synthesizer.reset_constraints()
+    synthesizer.le_constraint("A")
+    str_val = synthesizer.to_python(synthesizer.value)
+    assert str_val <= "A", "{val} should be smaller than or equal to 'A', but it is not.".format(val=str_val)
+    synthesizer.reset_constraints()
+    synthesizer.ge_constraint("zza")
+    str_val = synthesizer.to_python(synthesizer.value)
+    assert str_val >= "zza", "{val} should be larger than or equal to 'zza', but it is not.".format(val=str_val)
+    synthesizer.reset_constraints()
     str_val = synthesizer.bounded_synthesis(upper_bound="zzzB", lower_bound="zzz")
     assert str_val == "zzzA", "{val} should be the same as 'zzzA', but it is not.".format(val=str_val)
 
@@ -388,7 +494,7 @@ if __name__ == "__main__":
     synthesizer.bounded_synthesis(upper_bound=40, lower_bound=25)
     bitvec_val = synthesizer.to_python(synthesizer.value)
     assert bitvec_val > 25, "{val} should be larger than 25, but it is not.".format(val=bitvec_val)
-    assert bitvec_val < 40, "{val} should be smaller than than 40, but it is not.".format(val=bitvec_val)
+    assert bitvec_val < 40, "{val} should be smaller than 40, but it is not.".format(val=bitvec_val)
 
     # Define a hash function
     def shr32(v, *, n):
