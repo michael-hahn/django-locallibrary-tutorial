@@ -129,6 +129,8 @@ from catalog.cache import sign_up_sheet
 from catalog.forms import SignUpForm, RemoveForm
 from django.core.untrustedtypes import UntrustedInt, UntrustedStr
 
+
+@login_required
 def signup(request):
     """View function for user signup in the sign-up form."""
     # If this is a POST request then process the Form data
