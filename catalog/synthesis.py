@@ -14,21 +14,31 @@ class Synthesizer(object):
         self.solver = Solver()
         self.var = symbol
 
-    def lt_constraint(self, value, **kargs):
-        """Add to solver a less-than constraint:
-        self.var < value. By default, we assume that the type
-        of the value can be handled by Z3 directly with <, such
-        as integer, but this is not always the case. In some
+    def lt_constraint(self, values, **kargs):
+        """Add to solver a less-than constraint: values can be
+        a single value or a *list* of values: for v in values,
+        self.var < v. By default, we assume that the type
+        of the values can be handled by Z3 directly with <, such
+        as list of integer, but this is not always the case. In some
         cases like string, this function should be overridden."""
-        self.solver.add(self.var < value)
+        if isinstance(values, list):
+            for v in values:
+                self.solver.add(self.var < v)
+        else:
+            self.solver.add(self.var < values)
 
-    def gt_constraint(self, value, **kargs):
-        """Add to solver a greater-than constraint:
-        self.var > value. By default, we assume that the type
-        of the value can be handled by Z3 directly with >, such
+    def gt_constraint(self, values, **kargs):
+        """Add to solver a greater-than constraint: values can
+        be a single value or a *list* of values: for v in
+        values, self.var > v. By default, we assume that the type
+        of the values can be handled by Z3 directly with >, such
         as integer, but this is not always the case. In some
         cases like string, this function should be overridden."""
-        self.solver.add(self.var > value)
+        if isinstance(values, list):
+            for v in values:
+                self.solver.add(self.var > v)
+        else:
+            self.solver.add(self.var > values)
 
     def eq_constraint(self, func, value, **kargs):
         """Add to solver an equal-to constraints:
