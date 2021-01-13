@@ -382,8 +382,14 @@ class StrSynthesizer(Synthesizer):
         upper_bound_length = len(upper_bound)
         lower_bound_length = len(lower_bound)
         bound_length = min(upper_bound_length, lower_bound_length)
-        self.lt_constraint(upper_bound, offset=bound_length)
-        self.gt_constraint(lower_bound, offset=bound_length)
+        pos = 0
+        while pos < bound_length:
+            if upper_bound[pos] == lower_bound[pos]:
+                pos += 1
+            else:
+                break
+        self.lt_constraint(upper_bound, offset=pos)
+        self.gt_constraint(lower_bound, offset=pos)
 
     def to_python(self, value):
         if value is not None:
@@ -481,6 +487,10 @@ if __name__ == "__main__":
     synthesizer.reset_constraints()
     str_val = synthesizer.bounded_synthesis(upper_bound="zzzB", lower_bound="zzz")
     assert str_val == "zzzA", "{val} should be the same as 'zzzA', but it is not.".format(val=str_val)
+    synthesizer.reset_constraints()
+    str_val = synthesizer.bounded_synthesis(upper_bound="Luke", lower_bound="Blair")
+    assert str_val < "Luke", "{val} should be smaller than 'Luke', but it is not.".format(val=str_val)
+    assert str_val > "Blair", "{val} should be larger than 'Blair', but it is not.".format(val=str_val)
 
     synthesizer = BitVecSynthesizer()
     synthesizer.gt_constraint(43)   # BitVec supports base class >
