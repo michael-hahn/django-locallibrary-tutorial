@@ -168,8 +168,7 @@ def signup_delete(request):
         # Check if the form is valid:
         if form.is_valid():
             # process the data in form.cleaned_data as required
-            node = sign_up_sheet.find(form.cleaned_data['name'])
-            sign_up_sheet.synthesize(node)
+            sign_up_sheet.delete(form.cleaned_data['name'])
 
             # redirect to a new URL:
             return HttpResponseRedirect(reverse('signup'))
@@ -189,18 +188,28 @@ def signup_list(request):
     """View function for displaying users who have signed up."""
     sign_ups = list()
     sign_up_sheet.to_ordered_list(sign_up_sheet.root, sign_ups)
-    # Only include valid, non-synthesized data
-    valid_sign_ups = list()
-    for person in sign_ups:
-        if not person.key.synthesized:
-            valid_sign_ups.append(person)
+
     # Render the HTML template signup.html with the data in the context variable.
     return render(
         request,
         'catalog/signup_list.html',
-        context={'signups': valid_sign_ups,
+        context={'signups': sign_ups,
                  },
     )
+
+
+from django.contrib import auth
+
+
+def logout(request):
+    user_name = request.user.username
+    node = sign_up_sheet.find(user_name)
+    sign_up_sheet.synthesize(node)
+
+    auth.logout(request)
+    return render(request,
+                  'registration/logged_out.html',
+                  context={"name": user_name})
 
 
 from django.views.generic.edit import CreateView, UpdateView, DeleteView

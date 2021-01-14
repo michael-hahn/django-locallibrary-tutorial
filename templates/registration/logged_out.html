@@ -1,7 +1,7 @@
 {% extends "base_generic.html" %}
 
 {% block content %}
-<p>Logged out!</p>  
+<p>Logged out! {{ name }}, your temporary data, if any, has also been deleted.</p>
 
 <a href="{% url 'login'%}">Click here to login again.</a>
 {% endblock %}

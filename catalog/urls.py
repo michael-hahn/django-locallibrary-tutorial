@@ -45,3 +45,7 @@ urlpatterns += [
     path('signup/new/', views.signup, name='new-signup'),
     path('signup/delete/', views.signup_delete, name='delete-signup'),
 ]
+
+urlpatterns += [
+    path('logout/', views.logout, name='logged-out'),
+]
