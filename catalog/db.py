@@ -306,7 +306,7 @@ class SynthesizableDict(UserDict):
         # synthesized_value and key should have the same hash value
         self.data[synthesized_value] = val
         # insert key (but with the synthesized flag set) into the dict too
-        self.data[UntrustedStr(key, True)] = val
+        self.data[UntrustedStr(key, synthesized=True)] = val
 
 
 if __name__ == "__main__":
