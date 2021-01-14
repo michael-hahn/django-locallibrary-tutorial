@@ -280,6 +280,9 @@ class StrSynthesizer(Synthesizer):
         lt_constraint() as the public API, but not this function.
 
         value should never be an empty string in this function."""
+        if isinstance(value, UntrustedStr):
+            # Get str type value if value is UntrustedStr
+            value = value.data
         # Create a regular expression template for synthesis
         bound_length = len(value)
         offset = 0
@@ -350,6 +353,9 @@ class StrSynthesizer(Synthesizer):
         to synthesize a string (or ValueError). See gt_constraint()
         for more detailed description. User should always call
         gt_constraint() as the public API, but not this function."""
+        if isinstance(value, UntrustedStr):
+            # Get str type value if value is UntrustedStr
+            value = value.data
         bound_length = len(value)
         if bound_length == 0:
             # If value is an empty string, any non-empty string will do
@@ -546,6 +552,7 @@ if __name__ == "__main__":
     assert str_val.__hash__() == untrusted_str.__hash__(), "{synthesized_val} should have the same hashed value " \
                                                            "as {val}".format(synthesized_val=str_val,
                                                                              val=untrusted_str)
+    assert str_val.synthesized, "{val} should be synthesized.".format(val=str_val)
 
     synthesizer = BitVecSynthesizer()
     synthesizer.gt_constraint(43)   # BitVec supports base class >
