@@ -494,7 +494,7 @@ if __name__ == "__main__":
     synthesizer.reset_constraints()
     synthesizer.eq_constraint(calc, 40, y=5)   # y is a keyed argument
     int_val = synthesizer.to_python(synthesizer.value)
-    assert int(int_val) == 15, "{val} should be equal to 15, but it is not.".format(val=int_val)
+    assert int_val == 15, "{val} should be equal to 15, but it is not.".format(val=int_val)
 
     synthesizer = StrSynthesizer()
     synthesizer.lt_constraint("A")
