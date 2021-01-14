@@ -288,9 +288,10 @@ class SynthesizableDict(UserDict):
     def synthesis(self, key):
         """dict does not provide a programmatic way to
         access and overwrite keys in-place. Since UserDict
-        (as well as MutableMapping for that matter) inherits
-        from Python's built-in key, we cannot do a real
-        synthesis. We will do a "fake" one just to illustrate."""
+        (as well as MutableMapping for that matter) uses
+        Python's built-in key, we cannot do a real
+        synthesis. We will do a "fake" one just to illustrate,
+        but something still won't work in this data structure."""
         if key not in self.data:
             return True
         val = self.data[key]
@@ -307,6 +308,11 @@ class SynthesizableDict(UserDict):
 
         synthesized_value = synthesizer.to_python(synthesizer.value)
         # synthesized_value and key should have the same hash value
+        # TODO: Note that if synthesized_value happens to be the same as
+        #  the original key, this insertion does nothing. For example,
+        #  because of the default hash function of UntrustedInt, the
+        #  synthesized int might be the same as the original int key, so
+        #  this insertion does not have any effect.
         self.data[synthesized_value] = val
 
 
@@ -357,16 +363,18 @@ if __name__ == "__main__":
                                                                            synthesis=key.synthesized))
     sd = SynthesizableDict()
     sd[UntrustedInt(7)] = UntrustedStr("Jake")
-    sd[UntrustedInt(5)] = UntrustedStr("Blair")
+    # We need a super big integer key so that the synthesized integer
+    # value would be different from this original value (see the TODO above)
+    sd[UntrustedInt(32345435432758439203535345435)] = UntrustedStr("Blair")
     sd[UntrustedInt(14)] = UntrustedStr("Luke")
     sd[UntrustedInt(9)] = UntrustedStr("Andre")
     sd[UntrustedInt(12)] = UntrustedStr("Zack")
     for key in sd:
         print("{key} -> {value}".format(key=key, value=sd[key]))
-    sd.synthesis(UntrustedInt(5))
+    sd.synthesis(UntrustedInt(32345435432758439203535345435))
     print("After deleting '5' by synthesis...")
     for key in sd:
-        print("{key}({hash}) -> {value} [Synthesized: {synthesis}]".format(key=key,
-                                                                           hash=key.__hash__(),
-                                                                           value=sd[key],
-                                                                           synthesis=key.synthesized))
+        print("{key}({hash}) -> {value} [Synthesized Key: {synthesis}]".format(key=key,
+                                                                               hash=key.__hash__(),
+                                                                               value=sd[key],
+                                                                               synthesis=key.synthesized))
