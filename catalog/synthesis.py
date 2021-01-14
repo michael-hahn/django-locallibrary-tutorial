@@ -494,7 +494,7 @@ if __name__ == "__main__":
     synthesizer.reset_constraints()
     synthesizer.eq_constraint(calc, 40, y=5)   # y is a keyed argument
     int_val = synthesizer.to_python(synthesizer.value)
-    assert int_val == 15, "{val} should be equal to 15, but it is not.".format(val=int_val)
+    assert int(int_val) == 15, "{val} should be equal to 15, but it is not.".format(val=int_val)
 
     synthesizer = StrSynthesizer()
     synthesizer.lt_constraint("A")
@@ -583,4 +583,4 @@ if __name__ == "__main__":
     synthesizer.reset_constraints()
     synthesizer.eq_constraint(shr32, 0x3E345C, n=2)
     bitvec_val = synthesizer.to_python(synthesizer.value)
-    assert bitvec_val == 16306544, "{val} should be equal to 16306544, but it is not.".format(val=bitvec_val)
+    assert int(bitvec_val) == 16306544, "{val} should be equal to 16306544, but it is not.".format(val=bitvec_val)
