@@ -295,18 +295,19 @@ class SynthesizableDict(UserDict):
             return True
         val = self.data[key]
         synthesize_type = type(key).__name__
-        if synthesize_type == 'UntrustedStr':
+        if synthesize_type == 'UntrustedInt':
+            synthesizer = IntSynthesizer()
+            synthesizer.eq_constraint(UntrustedInt.custom_hash, key.__hash__())
+        elif synthesize_type == 'UntrustedStr':
             synthesizer = StrSynthesizer()
+            synthesizer.eq_constraint(UntrustedStr.custom_hash, key.__hash__())
         else:
             raise NotImplementedError("We cannot synthesize value of type "
                                       "{type} yet".format(type=synthesize_type))
 
-        synthesizer.eq_constraint(UntrustedStr.custom_hash, key.__hash__())
         synthesized_value = synthesizer.to_python(synthesizer.value)
         # synthesized_value and key should have the same hash value
         self.data[synthesized_value] = val
-        # insert key (but with the synthesized flag set) into the dict too
-        self.data[UntrustedStr(key, synthesized=True)] = val
 
 
 if __name__ == "__main__":
@@ -346,9 +347,24 @@ if __name__ == "__main__":
     sd[UntrustedStr("Andre")] = UntrustedInt(9)
     sd[UntrustedStr("Zack")] = UntrustedInt(12)
     for key in sd:
-        print("{key}->{value}".format(key=key, value=sd[key]))
+        print("{key} -> {value}".format(key=key, value=sd[key]))
     sd.synthesis(UntrustedStr("Blair"))
     print("After deleting 'Blair' by synthesis...")
+    for key in sd:
+        print("{key}({hash}) -> {value} [Synthesized: {synthesis}]".format(key=key,
+                                                                           hash=key.__hash__(),
+                                                                           value=sd[key],
+                                                                           synthesis=key.synthesized))
+    sd = SynthesizableDict()
+    sd[UntrustedInt(7)] = UntrustedStr("Jake")
+    sd[UntrustedInt(5)] = UntrustedStr("Blair")
+    sd[UntrustedInt(14)] = UntrustedStr("Luke")
+    sd[UntrustedInt(9)] = UntrustedStr("Andre")
+    sd[UntrustedInt(12)] = UntrustedStr("Zack")
+    for key in sd:
+        print("{key} -> {value}".format(key=key, value=sd[key]))
+    sd.synthesis(UntrustedInt(5))
+    print("After deleting '5' by synthesis...")
     for key in sd:
         print("{key}({hash}) -> {value} [Synthesized: {synthesis}]".format(key=key,
                                                                            hash=key.__hash__(),
