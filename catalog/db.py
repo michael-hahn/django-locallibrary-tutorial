@@ -2,6 +2,7 @@ from django.core.untrustedtypes import UntrustedInt, UntrustedStr
 from catalog.synthesis import IntSynthesizer, StrSynthesizer
 
 from collections import UserDict
+from sortedcontainers import SortedList
 
 
 class BiNode(object):
@@ -270,6 +271,69 @@ class BinarySearchTree(object):
         return printout
 
 
+class SynthesizableSortedList(SortedList):
+    """Inherit from SortedList to create a custom sorted list
+    that behaves exactly like a sorted list (with elements sorted
+    in the list) but the elements in the SynthesizableSortedList
+    can be synthesized. Reference of the sorted containers:
+    http://www.grantjenks.com/docs/sortedcontainers/sortedlist.html."""
+    def __setitem__(self, index, value):
+        """SortedList raise not-implemented error when calling
+        __setitem__ because it will not allow users to simply
+        replace a value at index (in case the list becomes
+        unsorted). We implement this function based on SortedList
+        __getitem__ implementation for direct replacement so that
+        synthesis can replace a value directly. Note that our
+        synthesis guarantees the sorted order so it is OK to do
+        so, but the user of SynthesizableSortedList should not
+        call this function.
+
+        This function is implemented specifically for our synthesis.
+        One should not use this function to e.g., append a new value.
+
+        Note that We are unfortunately using many supposedly
+        "protected" instance attributes to implement __setitem__."""
+        _lists = self._lists
+        _maxes = self._maxes
+
+        pos, idx = self._pos(index)
+        _lists[pos][idx] = value
+        # SortedList maintains a list of maximum values for each sublist.
+        # We must update the maximum value if "value" becomes the
+        # maximum value of its sublist.
+        if idx == len(_lists[pos]) - 1:
+            _maxes[pos] = value
+
+    def synthesis(self, index):
+        """Synthesize a value at a given index in the sorted list.
+        The synthesized value must ensure that the list is still sorted."""
+        if index >= self._len:
+            raise IndexError('list index out of range')
+
+        value = self.__getitem__(index)
+        synthesize_type = type(value).__name__
+        if synthesize_type == 'UntrustedInt':
+            synthesizer = IntSynthesizer()
+        elif synthesize_type == 'UntrustedStr':
+            synthesizer = StrSynthesizer()
+        else:
+            raise NotImplementedError("We cannot synthesize value of type "
+                                      "{type} yet".format(type=synthesize_type))
+
+        if index == 0:
+            # The value to be synthesized is the smallest in the sorted list
+            synthesizer.lt_constraint(self.__getitem__(index + 1))
+        elif index == self._len - 1:
+            # The value to be synthesized is the largest in the sorted list
+            synthesizer.gt_constraint(self.__getitem__(index - 1))
+        else:
+            # The value to be synthesized is in the middle of the sorted list
+            synthesizer.bounded_constraints(upper_bound=self.__getitem__(index + 1),
+                                            lower_bound=self.__getitem__(index - 1))
+        synthesized_value = synthesizer.to_python(synthesizer.value)
+        self.__setitem__(index, synthesized_value)
+
+
 class SynthesizableDict(UserDict):
     """Inherit from UserDict to create a custom dict that
     behaves exactly like Python's built-in dict but the
@@ -316,7 +380,7 @@ class SynthesizableDict(UserDict):
         self.data[synthesized_value] = val
 
 
-if __name__ == "__main__":
+def bst_test():
     bst = BinarySearchTree()
     bst.insert(UntrustedStr("Jake"), UntrustedInt(7))
     bst.insert(UntrustedStr("Blair"), UntrustedInt(5))
@@ -337,15 +401,32 @@ if __name__ == "__main__":
     print(bst.synthesize(bst.root))
     print(str(bst))
 
-    bst = BinarySearchTree()
-    bst.insert(UntrustedStr("Jake"))
-    bst.insert(UntrustedStr("Blair"))
-    bst.insert(UntrustedStr("Luke"))
-    bst.insert(UntrustedStr("Andre"))
-    bst.insert(UntrustedStr("Zack"))
-    bst.delete("Jake")
-    print(str(bst))
 
+def sorted_list_test():
+    sl = SynthesizableSortedList()
+    sl.update([UntrustedStr("Jake"), UntrustedStr("Blair"), UntrustedStr("Luke"),
+               UntrustedStr("Andre"), UntrustedStr("Zack")])
+    print(sl)
+    sl.synthesis(2)
+    print(sl)
+    sl.synthesis(0)
+    print(sl)
+    sl.synthesis(4)
+    print(sl)
+
+    sl = SynthesizableSortedList()
+    sl.update([UntrustedInt(7), UntrustedInt(5), UntrustedInt(14),
+              UntrustedInt(9), UntrustedInt(12)])
+    print(sl)
+    sl.synthesis(2)
+    print(sl)
+    sl.synthesis(0)
+    print(sl)
+    sl.synthesis(4)
+    print(sl)
+
+
+def dict_test():
     sd = SynthesizableDict()
     sd[UntrustedStr("Jake")] = UntrustedInt(7)
     sd[UntrustedStr("Blair")] = UntrustedInt(5)
@@ -378,3 +459,9 @@ if __name__ == "__main__":
                                                                                hash=key.__hash__(),
                                                                                value=sd[key],
                                                                                synthesis=key.synthesized))
+
+
+if __name__ == "__main__":
+    bst_test()
+    dict_test()
+    sorted_list_test()
