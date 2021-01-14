@@ -9,7 +9,8 @@
       {% for person in signups %}
       <li>
 {#        <a href="{{ book.get_absolute_url }}">{{ book.title }}</a> ({{book.author}})#}
-          {{ person.key }} ({{ person.val }})
+          Name: {{ person.key }} [Synthesized: {% if person.key.synthesized %}True{% else %}False{% endif %}]
+          (Age: {{ person.val }})
       </li>
       {% endfor %}
 
