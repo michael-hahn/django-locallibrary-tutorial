@@ -1,6 +1,8 @@
 from django.core.untrustedtypes import UntrustedInt, UntrustedStr
 from catalog.synthesis import IntSynthesizer, StrSynthesizer
 
+from collections import UserDict
+
 
 class BiNode(object):
     """Node class with two children."""
@@ -268,6 +270,45 @@ class BinarySearchTree(object):
         return printout
 
 
+class SynthesizableDict(UserDict):
+    """Inherit from UserDict to create a custom dict that
+    behaves exactly like Python's built-in dict but the
+    elements in the SynthesizableDict can be synthesized.
+    UserDict is a wrapper/adapter class around the built-in
+    dict, which makes the painful process of inheriting
+    directly from Python's built-in dict class much easier.
+    Reference:
+    https://docs.python.org/3/library/collections.html#userdict-objects.
+
+    Alternatively, we can use abstract base classes in
+    Python's collections.abc module. In this case, we could
+    use MutableMapping as a mixin class to inherit. ABC makes
+    modifying a data structure's core functionality easier
+    than directly modifying it from dict."""
+    def synthesis(self, key):
+        """dict does not provide a programmatic way to
+        access and overwrite keys in-place. Since UserDict
+        (as well as MutableMapping for that matter) inherits
+        from Python's built-in key, we cannot do a real
+        synthesis. We will do a "fake" one just to illustrate."""
+        if key not in self.data:
+            return True
+        val = self.data[key]
+        synthesize_type = type(key).__name__
+        if synthesize_type == 'UntrustedStr':
+            synthesizer = StrSynthesizer()
+        else:
+            raise NotImplementedError("We cannot synthesize value of type "
+                                      "{type} yet".format(type=synthesize_type))
+
+        synthesizer.eq_constraint(UntrustedStr.custom_hash, key.__hash__())
+        synthesized_value = synthesizer.to_python(synthesizer.value)
+        # synthesized_value and key should have the same hash value
+        self.data[synthesized_value] = val
+        # insert key (but with the synthesized flag set) into the dict too
+        self.data[UntrustedStr(key, True)] = val
+
+
 if __name__ == "__main__":
     bst = BinarySearchTree()
     bst.insert(UntrustedStr("Jake"), UntrustedInt(7))
@@ -297,3 +338,19 @@ if __name__ == "__main__":
     bst.insert(UntrustedStr("Zack"))
     bst.delete("Jake")
     print(str(bst))
+
+    sd = SynthesizableDict()
+    sd[UntrustedStr("Jake")] = UntrustedInt(7)
+    sd[UntrustedStr("Blair")] = UntrustedInt(5)
+    sd[UntrustedStr("Luke")] = UntrustedInt(14)
+    sd[UntrustedStr("Andre")] = UntrustedInt(9)
+    sd[UntrustedStr("Zack")] = UntrustedInt(12)
+    for key in sd:
+        print("{key}->{value}".format(key=key, value=sd[key]))
+    sd.synthesis(UntrustedStr("Blair"))
+    print("After deleting 'Blair' by synthesis...")
+    for key in sd:
+        print("{key}({hash}) -> {value} [Synthesized: {synthesis}]".format(key=key,
+                                                                           hash=key.__hash__(),
+                                                                           value=sd[key],
+                                                                           synthesis=key.synthesized))
