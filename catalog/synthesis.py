@@ -195,12 +195,19 @@ class BitVecSynthesizer(Synthesizer):
             return None
 
 
+def printable_ascii_chars():
+    """Returns an order string of printable ASCII
+    characters we use from 0x20 (space) to 0x7E (~)"""
+    chars = str()
+    for i in range(32, 127):
+        chars += chr(i)
+    return chars
+
+
 class StrSynthesizer(Synthesizer):
     """Synthesize a string value, subclass from Synthesizer."""
-    # All possible characters in a synthesized string
-    DEFAULT_UPPER_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    DEFAULT_LOWER_CHARS = "abcdefghijklmnopqrstuvwxyz"
-    DEFAULT_NUM_CHARS = "0123456789"
+    # All default possible characters in a synthesized string (printable ASCII)
+    DEFAULT_ASCII_CHARS = printable_ascii_chars()
     # The maximum possible length of a synthesized string
     DEFAULT_MAX_CHAR_LENGTH = 50
 
@@ -209,8 +216,7 @@ class StrSynthesizer(Synthesizer):
         if not charset:
             # Create a default character set
             # (always add upper-case chars first)
-            charset = self.DEFAULT_UPPER_CHARS
-            charset += self.DEFAULT_LOWER_CHARS
+            charset = self.DEFAULT_ASCII_CHARS
         self._charset = charset     # String representation
         self._chars = Union([Re(StringVal(c)) for c in self._charset])      # Z3 union representation
 
@@ -540,7 +546,8 @@ if __name__ == "__main__":
     assert str_val >= "zza", "{val} should be larger than or equal to 'zza', but it is not.".format(val=str_val)
     synthesizer.reset_constraints()
     str_val = synthesizer.bounded_synthesis(upper_bound="zzzB", lower_bound="zzz")
-    assert str_val == "zzzA", "{val} should be the same as 'zzzA', but it is not.".format(val=str_val)
+    assert str_val < "zzzB", "{val} should be smaller than 'zzzB', but it is not.".format(val=str_val)
+    assert str_val > "zzz", "{val} should be larger than 'zzz', but it is not.".format(val=str_val)
     synthesizer.reset_constraints()
     str_val = synthesizer.bounded_synthesis(upper_bound="Luke", lower_bound="Blair")
     assert str_val < "Luke", "{val} should be smaller than 'Luke', but it is not.".format(val=str_val)
