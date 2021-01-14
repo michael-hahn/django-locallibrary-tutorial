@@ -583,4 +583,4 @@ if __name__ == "__main__":
     synthesizer.reset_constraints()
     synthesizer.eq_constraint(shr32, 0x3E345C, n=2)
     bitvec_val = synthesizer.to_python(synthesizer.value)
-    assert int(bitvec_val) == 16306544, "{val} should be equal to 16306544, but it is not.".format(val=bitvec_val)
+    assert shr32(bitvec_val, n=2) == 0x3E345C
