@@ -2,11 +2,11 @@
 from z3 import Solver, sat
 from z3 import String, StringVal, Concat
 from z3 import Re, InRe, Union, Star, Plus
-from z3 import Int
+from z3 import Int, Real
 from z3 import BitVec
 from z3 import And, Or, If
 
-from django.core.untrustedtypes import UntrustedInt, UntrustedStr
+from django.core.untrustedtypes import UntrustedInt, UntrustedFloat, UntrustedStr
 
 
 class Synthesizer(object):
@@ -169,6 +169,27 @@ class IntSynthesizer(Synthesizer):
     def simple_synthesis(self, value):
         if value is not None:
             return UntrustedInt(value, synthesized=True)
+        else:
+            return None
+
+
+class FloatSynthesizer(Synthesizer):
+    """Synthesize a float value, subclass from Synthesizer."""
+    def __init__(self):
+        super().__init__(Real('var'))
+
+    def to_python(self, value):
+        if value is not None:
+            fraction_value = value.as_fraction()
+            # Lose precision when casting into float
+            float_value = float(fraction_value.numerator) / float(fraction_value.denominator)
+            return UntrustedFloat(float_value, synthesized=True)
+        else:
+            return None
+
+    def simple_synthesis(self, value):
+        if value is not None:
+            return UntrustedFloat(value, synthesized=True)
         else:
             return None
 
@@ -494,6 +515,20 @@ if __name__ == "__main__":
     synthesizer.eq_constraint(calc, 40, y=5)   # y is a keyed argument
     int_val = synthesizer.to_python(synthesizer.value)
     assert int_val == 15, "{val} should be equal to 15, but it is not.".format(val=int_val)
+
+    synthesizer = FloatSynthesizer()
+    float_val = synthesizer.bounded_synthesis(upper_bound=92.6, lower_bound=33.8)
+    assert float_val > 33.8, "{val} should be larger than 33.8, but it is not.".format(val=float_val)
+    assert float_val < 92.6, "{val} should be smaller than than 92.6, but it is not.".format(val=float_val)
+    synthesizer.reset_constraints()
+    synthesizer.lt_constraint(34.5)
+    float_val = synthesizer.to_python(synthesizer.value)
+    assert float_val < 34.5, "{val} should be smaller than than 34.5, but it is not.".format(val=float_val)
+    synthesizer.reset_constraints()
+    synthesizer.gt_constraint(21.45)
+    float_val = synthesizer.to_python(synthesizer.value)
+    assert float_val > 21.45, "{val} should be larger than 21.45, but it is not.".format(val=float_val)
+    synthesizer.reset_constraints()
 
     synthesizer = StrSynthesizer()
     synthesizer.lt_constraint("A")
