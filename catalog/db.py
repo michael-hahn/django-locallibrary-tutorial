@@ -1,4 +1,4 @@
-from django.core.untrustedtypes import UntrustedInt, UntrustedStr
+from django.core.untrustedtypes import UntrustedInt, UntrustedStr, UntrustedMixin
 from catalog.synthesis import IntSynthesizer, StrSynthesizer
 
 from collections import UserDict
@@ -380,6 +380,99 @@ class SynthesizableDict(UserDict):
         self.data[synthesized_value] = val
 
 
+class SynthesizableHashTable(object):
+    """Our own simple implementation of a hash table (instead of Python's dict).
+    This is for demonstration only. Performance can degrade dramatically with
+    more insertions since we do not perform rehashing and so more elements will
+    be chained in the same bucket as the size continues to grow."""
+    DEFAULT_NUM_BUCKETS = 10
+
+    def __init__(self):
+        """A hash table is just a list of lists. Each list represents a bucket."""
+        self._num_buckets = self.DEFAULT_NUM_BUCKETS
+        self._hash_table = [list() for _ in range(self._num_buckets)]
+
+    def __setitem__(self, key, value):
+        """Insert a key/value pair into the hash table. Only keys of
+        Untrusted types can be inserted since we use Z3-friendly hash
+        function defined in those types."""
+        if not issubclass(type(key), UntrustedMixin):
+            raise KeyError("Only Untrusted-typed keys allowed. This key "
+                           "of type {type} is not.".format(type=type(key)))
+
+        hash_key = key.__hash__() % len(self._hash_table)
+        key_exists = False
+        bucket = self._hash_table[hash_key]
+        for i, kv in enumerate(bucket):
+            k, v = kv
+            if key == k:
+                key_exists = True
+                bucket[i] = (key, value)
+                break
+        if not key_exists:
+            bucket.append((key, value))
+
+    def __getitem__(self, key):
+        """Get the value of a key if key exists."""
+        hash_key = key.__hash__() % len(self._hash_table)
+        bucket = self._hash_table[hash_key]
+        for i, kv in enumerate(bucket):
+            k, v = kv
+            if key == k:
+                return v
+        raise KeyError("{key} does not exist in the hash table".format(key=key))
+
+    def __delitem__(self, key):
+        """Delete a key/value pair if key exists; otherwise do nothing."""
+        hash_key = key.__hash__() % len(self._hash_table)
+        key_exists = False
+        bucket = self._hash_table[hash_key]
+        for i, kv in enumerate(bucket):
+            k, v = kv
+            if key == k:
+                del bucket[i]
+                break
+
+    def keys(self):
+        """All keys in the hash table."""
+        return [key for sublist in self._hash_table for (key, value) in sublist]
+
+    def __iter__(self):
+        """Iterator over the hash table."""
+        for key in self.keys():
+            yield key, self.__getitem__(key)
+
+    def __len__(self):
+        """The size of the hash table."""
+        return sum([len(sublist) for sublist in self._hash_table])
+
+    def synthesis(self, key):
+        """Synthesize a given key in the hash table only if key already
+        exists in the hash table. The synthesized key must ensure that
+        the hash of the synthesized key is the same as that of the original.
+        The value of the corresponding key does not change."""
+        hash_key = key.__hash__() % len(self._hash_table)
+        bucket = self._hash_table[hash_key]
+        for i, kv in enumerate(bucket):
+            k, v = kv
+            if key == k:
+                synthesize_type = type(key).__name__
+                if synthesize_type == 'UntrustedInt':
+                    synthesizer = IntSynthesizer()
+                    synthesizer.eq_constraint(UntrustedInt.custom_hash, key.__hash__())
+                elif synthesize_type == 'UntrustedStr':
+                    synthesizer = StrSynthesizer()
+                    synthesizer.eq_constraint(UntrustedStr.custom_hash, key.__hash__())
+                else:
+                    raise NotImplementedError("We cannot synthesize value of type "
+                                              "{type} yet".format(type=synthesize_type))
+
+                synthesized_key = synthesizer.to_python(synthesizer.value)
+                # Overwrite the original key with the synthesized key
+                bucket[i] = (synthesized_key, v)
+                break
+
+
 def bst_test():
     bst = BinarySearchTree()
     bst.insert(UntrustedStr("Jake"), UntrustedInt(7))
@@ -426,42 +519,43 @@ def sorted_list_test():
     print(sl)
 
 
-def dict_test():
-    sd = SynthesizableDict()
+def hash_table_test():
+    sd = SynthesizableHashTable()
     sd[UntrustedStr("Jake")] = UntrustedInt(7)
     sd[UntrustedStr("Blair")] = UntrustedInt(5)
     sd[UntrustedStr("Luke")] = UntrustedInt(14)
     sd[UntrustedStr("Andre")] = UntrustedInt(9)
     sd[UntrustedStr("Zack")] = UntrustedInt(12)
-    for key in sd:
-        print("{key} -> {value}".format(key=key, value=sd[key]))
+    for key, value in sd:
+        print("{key} (hash: {hash}) -> {value}".format(key=key, hash=key.__hash__(), value=sd[key]))
+
     sd.synthesis(UntrustedStr("Blair"))
     print("After deleting 'Blair' by synthesis...")
-    for key in sd:
-        print("{key}({hash}) -> {value} [Synthesized: {synthesis}]".format(key=key,
-                                                                           hash=key.__hash__(),
-                                                                           value=sd[key],
-                                                                           synthesis=key.synthesized))
-    sd = SynthesizableDict()
+    for key, value in sd:
+        print("{key}(hash: {hash}) -> {value} [Synthesized: {synthesis}]".format(key=key,
+                                                                                 hash=key.__hash__(),
+                                                                                 value=sd[key],
+                                                                                 synthesis=key.synthesized))
+    sd = SynthesizableHashTable()
     sd[UntrustedInt(7)] = UntrustedStr("Jake")
     # We need a super big integer key so that the synthesized integer
-    # value would be different from this original value (see the TODO above)
+    # value would be different from this original value
     sd[UntrustedInt(32345435432758439203535345435)] = UntrustedStr("Blair")
     sd[UntrustedInt(14)] = UntrustedStr("Luke")
     sd[UntrustedInt(9)] = UntrustedStr("Andre")
     sd[UntrustedInt(12)] = UntrustedStr("Zack")
-    for key in sd:
-        print("{key} -> {value}".format(key=key, value=sd[key]))
+    for key, value in sd:
+        print("{key} (hash: {hash}) -> {value}".format(key=key, hash=key.__hash__(), value=sd[key]))
     sd.synthesis(UntrustedInt(32345435432758439203535345435))
-    print("After deleting '5' by synthesis...")
-    for key in sd:
-        print("{key}({hash}) -> {value} [Synthesized Key: {synthesis}]".format(key=key,
-                                                                               hash=key.__hash__(),
-                                                                               value=sd[key],
-                                                                               synthesis=key.synthesized))
+    print("After deleting '32345435432758439203535345435' by synthesis...")
+    for key, value in sd:
+        print("{key} (hash: {hash}) -> {value} [Synthesized Key: {synthesis}]".format(key=key,
+                                                                                      hash=key.__hash__(),
+                                                                                      value=sd[key],
+                                                                                      synthesis=key.synthesized))
 
 
 if __name__ == "__main__":
     bst_test()
-    dict_test()
+    hash_table_test()
     sorted_list_test()
