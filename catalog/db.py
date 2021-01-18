@@ -1,5 +1,5 @@
 from django.core.untrustedtypes import UntrustedInt, UntrustedStr, UntrustedMixin
-from catalog.synthesis import IntSynthesizer, StrSynthesizer
+from catalog.synthesis import IntSynthesizer, StrSynthesizer, init_synthesizer
 
 from collections import UserDict
 from sortedcontainers import SortedList
@@ -207,20 +207,12 @@ class BinarySearchTree(object):
         succeeded, return True."""
         upper_bound = self._min_value(node.right_child)
         lower_bound = self._max_value(node.left_child)
-        # Synthesize either the key (if exists) or val
-        # How key (or val) is synthesized is based on
-        # its type, so we obtain the type first.
-        synthesize_type = type(node.val).__name__
+        # Initialize a synthesizer based on the type of
+        # either the key (if exists) or val
+        value = node.val
         if node.key:
-            synthesize_type = type(node.key).__name__
-
-        if synthesize_type == 'int' or synthesize_type == 'UntrustedInt':
-            synthesizer = IntSynthesizer()
-        elif synthesize_type == 'str' or synthesize_type == 'UntrustedStr':
-            synthesizer = StrSynthesizer()
-        else:
-            raise NotImplementedError("We cannot synthesize value of type "
-                                      "{type} yet".format(type=synthesize_type))
+            value = node.key
+        synthesizer = init_synthesizer(value)
 
         # If at most one bound exists, do simple synthesis
         if not upper_bound or not lower_bound:
@@ -313,14 +305,7 @@ class SynthesizableSortedList(SortedList):
             raise IndexError('list index out of range')
 
         value = self.__getitem__(index)
-        synthesize_type = type(value).__name__
-        if synthesize_type == 'UntrustedInt':
-            synthesizer = IntSynthesizer()
-        elif synthesize_type == 'UntrustedStr':
-            synthesizer = StrSynthesizer()
-        else:
-            raise NotImplementedError("We cannot synthesize value of type "
-                                      "{type} yet".format(type=synthesize_type))
+        synthesizer = init_synthesizer(value)
 
         if index == 0:
             # The value to be synthesized is the smallest in the sorted list
@@ -362,16 +347,7 @@ class SynthesizableDict(UserDict):
         if key not in self.data:
             return True
         val = self.data[key]
-        synthesize_type = type(key).__name__
-        if synthesize_type == 'UntrustedInt':
-            synthesizer = IntSynthesizer()
-            synthesizer.eq_constraint(UntrustedInt.custom_hash, key.__hash__())
-        elif synthesize_type == 'UntrustedStr':
-            synthesizer = StrSynthesizer()
-            synthesizer.eq_constraint(UntrustedStr.custom_hash, key.__hash__())
-        else:
-            raise NotImplementedError("We cannot synthesize value of type "
-                                      "{type} yet".format(type=synthesize_type))
+        synthesizer = init_synthesizer(val)
 
         synthesized_value = synthesizer.to_python(synthesizer.value)
         # synthesized_value and key should have the same hash value
@@ -509,14 +485,7 @@ class SynthesizableMinHeap(object):
             raise IndexError('list index out of range')
 
         value = self._heap[index]
-        synthesize_type = type(value).__name__
-        if synthesize_type == 'UntrustedInt':
-            synthesizer = IntSynthesizer()
-        elif synthesize_type == 'UntrustedStr':
-            synthesizer = StrSynthesizer()
-        else:
-            raise NotImplementedError("We cannot synthesize value of type "
-                                      "{type} yet".format(type=synthesize_type))
+        synthesizer = init_synthesizer(value)
 
         # Get the parent and children value if exist
         parent_index = (index-1) // 2

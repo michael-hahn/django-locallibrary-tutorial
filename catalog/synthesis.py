@@ -484,6 +484,23 @@ class StrSynthesizer(Synthesizer):
             return None
 
 
+def init_synthesizer(value, vectorized=False):
+    """Base on the type of value, we determine which synthesizer to use.
+    If value is represented by bit vector, then we always init a
+    BitVecSynthesizer regardless of the type of the value."""
+    if vectorized:
+        return BitVecSynthesizer()
+    elif isinstance(value, UntrustedInt):         # Note that int is included
+        return IntSynthesizer()
+    elif isinstance(value, UntrustedStr):       # Note that str is *not* included
+        return StrSynthesizer()
+    elif isinstance(value, UntrustedFloat):     # Note that float is included
+        return FloatSynthesizer()
+    else:
+        raise NotImplementedError("No corresponding synthesizer is found for type "
+                                  "{type}. Consider vectorization.".format(type=type(value)))
+
+
 if __name__ == "__main__":
     synthesizer = IntSynthesizer()
     int_val = synthesizer.bounded_synthesis(upper_bound=92, lower_bound=7)
