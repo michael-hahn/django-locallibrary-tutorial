@@ -538,7 +538,7 @@ class SynthesizableMinHeap(object):
         return heap
 
 
-class SynthesizableIntSet(object):
+class IntSet(object):
     """Python implementation of Redis' intSet data structure (simplified).
     A quick introduction can be found here:
     http://blog.wjin.org/posts/redis-internal-data-structure-intset.html
@@ -561,45 +561,33 @@ class SynthesizableIntSet(object):
         self._length is the number of actual integers in intSet, *not*
         the length of self._contents. Each element in self._contents
         is an int8 value."""
-        self._encoding = SynthesizableIntSet.INTSET_ENC_INT16
+        self._encoding = IntSet.INTSET_ENC_INT16
         self._length = 0
         self._contents = list()
 
     @staticmethod
-    def _from_bytes(byte_arr):
-        """Wrapper around built-in int.from_bytes()
-        as we fixed our byte order and signedness."""
-        return int.from_bytes(byte_arr, byteorder='big', signed=True)
-
-    @staticmethod
     def _get_encoding(value):
         """Return the required encoding for the provided value."""
-        if value < SynthesizableIntSet.INT32_MIN or value > SynthesizableIntSet.INT32_MAX:
-            return SynthesizableIntSet.INTSET_ENC_INT64
-        elif value < SynthesizableIntSet.INT16_MIN or value > SynthesizableIntSet.INT16_MAX:
-            return SynthesizableIntSet.INTSET_ENC_INT32
+        if value < IntSet.INT32_MIN or value > IntSet.INT32_MAX:
+            return IntSet.INTSET_ENC_INT64
+        elif value < IntSet.INT16_MIN or value > IntSet.INT16_MAX:
+            return IntSet.INTSET_ENC_INT32
         else:
-            return SynthesizableIntSet.INTSET_ENC_INT16
-
-    def _to_bytes(self, value):
-        """Wrapper around built-in int.to_bytes()
-        as we fixed our byte order and signedness.
-        Return integer list instead of byte array."""
-        return [int(i) for i in value.to_bytes(self._encoding, byteorder='big', signed=True)]
+            return IntSet.INTSET_ENC_INT16
 
     def __getitem__(self, pos, encoding):
         """Return the value at pos, using the configured encoding.
         Note that pos is in terms of the set visible to the user,
         it is not the location in self._contents (i.e., pos would
         correspond to self._length)."""
-        return SynthesizableIntSet._from_bytes(self._contents[pos*encoding:(pos+1)*encoding])
+        return int.from_bytes(self._contents[pos*encoding:(pos+1)*encoding], byteorder='big', signed=True)
 
     def __setitem__(self, pos, value, encoding):
         """Set the value at pos using the configured encoding.
         Note that pos is in terms of the set visible to the user,
         it is not the location in self._contents (i.e., pos would
         correspond to self._length)."""
-        byte_arr = self._to_bytes(value)
+        byte_arr = [int(i) for i in value.to_bytes(self._encoding, byteorder='big', signed=True)]
         for i in range(pos*encoding, (pos+1)*encoding):
             self._contents[i] = byte_arr[i-pos*encoding]
 
@@ -643,7 +631,7 @@ class SynthesizableIntSet(object):
 
     def find(self, value):
         """Determine whether value belongs to this intSet."""
-        value_encoding = SynthesizableIntSet._get_encoding(value)
+        value_encoding = IntSet._get_encoding(value)
         return value_encoding <= self._encoding and self._search(value)[0]
 
     def _upgrade_and_add(self, value):
@@ -654,7 +642,7 @@ class SynthesizableIntSet(object):
 
         # Change the encoding and resize self._contents
         old_encoding = self._encoding
-        self._encoding = SynthesizableIntSet._get_encoding(value)
+        self._encoding = IntSet._get_encoding(value)
         # Size difference from existing elements: self._length * (self._encoding - old_encoding)
         # Plus space for the added value: self._encoding
         self._contents.extend([None] * (self._length * (self._encoding - old_encoding) + self._encoding))
@@ -687,7 +675,7 @@ class SynthesizableIntSet(object):
 
     def add(self, value):
         """Insert an integer in intSet."""
-        value_encoding = SynthesizableIntSet._get_encoding(value)
+        value_encoding = IntSet._get_encoding(value)
 
         # Upgrade encoding if necessary. If we need to upgrade, we know that
         # this value should be either appended (if > 0) or prepended (if < 0),
@@ -708,7 +696,7 @@ class SynthesizableIntSet(object):
 
     def delete(self, value):
         """Delete an integer from intSet."""
-        value_encoding = SynthesizableIntSet._get_encoding(value)
+        value_encoding = IntSet._get_encoding(value)
 
         if value_encoding <= self._encoding:
             exist, pos = self._search(value)
@@ -728,6 +716,88 @@ class SynthesizableIntSet(object):
             set_str += str(self.__getitem__(i, self._encoding)) + " "
         set_str += "]"
         return set_str
+
+
+class SynthesizableIntSet(IntSet):
+    """Inherit from IntSet to create a custom IntSet
+    that behaves exactly like a IntSet (with elements sorted
+    in the list) but the elements in the SynthesizableIntSet
+    can be synthesized. We intentionally did not add
+    the synthesis feature in the IntSet superclass (even
+    though we implemented it ourselves) because we want to
+    highlight the changes that must be done to make IntSet
+    synthesizable (and that its unique encoding design
+    makes synthesis different from, e.g., a sorted list)."""
+    def __getitem__(self, pos, encoding):
+        """Override the superclass __getitem__ method
+        because we must return an UntrustedInt instead of
+        int and we must check if the returned value should
+        have synthesized flag set or not."""
+        # All values in self._contents should be of type UntrustedInt
+        # If any value is synthesized, the entire value should be synthesized
+        synthesized = False
+        for i in range(pos*encoding, (pos+1)*encoding):
+            synthesized = synthesized or self._contents[i].synthesized
+        return UntrustedInt(int.from_bytes(self._contents[pos*encoding:(pos+1)*encoding],
+                                           byteorder='big', signed=True),
+                            synthesized=synthesized)
+
+    def __setitem__(self, pos, value, encoding):
+        """Override the superclass __setitem__ method
+        because value is converted into a byte array
+        to be inserted into the data structure, instead
+        of being directly inserted into the data structure.
+        We do not want to "lose" the Untrusted type during
+        the conversion!"""
+        if not issubclass(type(value), UntrustedMixin):
+            raise ValueError("Only Untrusted-typed value can be inserted "
+                             "into SynthesizableIntSet, but {value} is "
+                             "of type {type}".format(value=value,
+                                                     type=type(value)))
+        synthesized = value.synthesized
+        byte_arr = [UntrustedInt(i, synthesized=synthesized)
+                    for i in int(value).to_bytes(self._encoding, byteorder='big', signed=True)]
+        for i in range(pos*encoding, (pos+1)*encoding):
+            self._contents[i] = byte_arr[i-pos*encoding]
+
+    def synthesize(self, pos):
+        """Synthesize a new value at pos (of intSet) without invalidating ordered-set
+        invariant. The synthesized value must be smaller than the next value (if exist)
+        and larger than the previous one (if exists). Returns True if synthesis succeeds.
+        It is possible that the same value is marked as synthesized because no other
+        synthesis value is possible.
+
+        Note: Synthesis should not change the encoding of this data structure. Therefore,
+        it is possible that a suitable value only exists in a different encoding but
+        because we cannot use the value, we would have to use the same value (and mark it
+        as synthesized). """
+        if pos >= self._length or pos < 0:
+            raise IndexError('set index out of range')
+        value = self.__getitem__(pos, self._encoding)
+        # for intSet, synthesizer should always be an IntSynthesizer
+        synthesizer = init_synthesizer(value)
+        # Value constraints imposed by the current encoding
+        if self._encoding == IntSet.INTSET_ENC_INT16:
+            synthesizer.bounded_constraints(upper_bound=IntSet.INT16_MAX,
+                                            lower_bound=IntSet.INT16_MIN)
+        elif self._encoding == IntSet.INTSET_ENC_INT32:
+            synthesizer.bounded_constraints(upper_bound=IntSet.INT32_MAX,
+                                            lower_bound=IntSet.INT32_MIN)
+
+        # Value constraints imposed by the position of the value in intSet
+        if pos == 0:
+            # The value to be synthesized is the smallest in the sorted list
+            synthesizer.lt_constraint(self.__getitem__(pos+1, self._encoding))
+        elif pos == self._length-1:
+            # The value to be synthesized is the largest in the sorted list
+            synthesizer.gt_constraint(self.__getitem__(pos-1, self._encoding))
+        else:
+            # The value to be synthesized is in the middle of the intSet
+            synthesizer.bounded_constraints(upper_bound=self.__getitem__(pos+1, self._encoding),
+                                            lower_bound=self.__getitem__(pos-1, self._encoding))
+        synthesized_value = synthesizer.to_python(synthesizer.value)
+        self.__setitem__(pos, synthesized_value, self._encoding)
+        return True
 
 
 def bst_test():
@@ -834,21 +904,21 @@ def min_heap_test():
 
 def int_set_test():
     int_set = SynthesizableIntSet()
-    int_set.add(5)
-    int_set.add(30)
-    int_set.add(-7)
-    int_set.add(14)
-    int_set.add(5)
+    int_set.add(UntrustedInt(5))
+    int_set.add(UntrustedInt(30))
+    int_set.add(UntrustedInt(-7))
+    int_set.add(UntrustedInt(14))
+    int_set.add(UntrustedInt(5))
     # We should not have access to _contents but it is OK for testing
     print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
-    int_set.add(35267)
+    int_set.add(UntrustedInt(35267))
     # We expect the intSet to take more space now (int16 -> int32)
     print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
-    int_set.add(2_447_483_647)
+    int_set.add(UntrustedInt(2_447_483_647))
     # We expect the intSet to take even more space now (int32 -> int64)
     print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
-    int_set.add(-335267)
-    int_set.add(-2_447_483_747)
+    int_set.add(UntrustedInt(-335267))
+    int_set.add(UntrustedInt(-2_447_483_747))
     print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
     print("45 is in the set: {}".format(int_set.find(45)))
     print("35267 is in the set: {}".format(int_set.find(35267)))
@@ -861,12 +931,22 @@ def int_set_test():
     print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
     int_set.delete(2447483647)
     print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
+    int_set.synthesize(0)
+    print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
+    int_set.synthesize(3)
+    print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
+    int_set.synthesize(4)
+    print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
+    for i in range(len(int_set)):
+        value = int_set.__getitem__(i, int_set._encoding)
+        print("{value} is synthesized: {synthesized}".format(value=value,
+                                                             synthesized=value.synthesized))
 
 
 if __name__ == "__main__":
-    # bst_test()
-    # hash_table_test()
-    # sorted_list_test()
-    # min_heap_test()
+    bst_test()
+    hash_table_test()
+    sorted_list_test()
+    min_heap_test()
     int_set_test()
 
