@@ -538,6 +538,198 @@ class SynthesizableMinHeap(object):
         return heap
 
 
+class SynthesizableIntSet(object):
+    """Python implementation of Redis' intSet data structure (simplified).
+    A quick introduction can be found here:
+    http://blog.wjin.org/posts/redis-internal-data-structure-intset.html
+    Original C code reference (v5.0.0) can be found here:
+    http://blog.wjin.org/posts/redis-internal-data-structure-intset.html.
+    Unlike the original implementation, we will always use big endian."""
+    # Different encodings use different numbers of bytes
+    INTSET_ENC_INT16 = 2
+    INTSET_ENC_INT32 = 4
+    INTSET_ENC_INT64 = 8
+    # Min/max integer value for different encodings
+    INT16_MIN = -32768
+    INT16_MAX = 32767
+    INT32_MIN = -2_147_483_648
+    INT32_MAX = 2_147_483_647
+
+    def __init__(self):
+        """Initialize an intSet with default int16 encoding, which
+        can be upgraded to int32 and then int64 later if needed.
+        self._length is the number of actual integers in intSet, *not*
+        the length of self._contents. Each element in self._contents
+        is an int8 value."""
+        self._encoding = SynthesizableIntSet.INTSET_ENC_INT16
+        self._length = 0
+        self._contents = list()
+
+    @staticmethod
+    def _from_bytes(byte_arr):
+        """Wrapper around built-in int.from_bytes()
+        as we fixed our byte order and signedness."""
+        return int.from_bytes(byte_arr, byteorder='big', signed=True)
+
+    @staticmethod
+    def _get_encoding(value):
+        """Return the required encoding for the provided value."""
+        if value < SynthesizableIntSet.INT32_MIN or value > SynthesizableIntSet.INT32_MAX:
+            return SynthesizableIntSet.INTSET_ENC_INT64
+        elif value < SynthesizableIntSet.INT16_MIN or value > SynthesizableIntSet.INT16_MAX:
+            return SynthesizableIntSet.INTSET_ENC_INT32
+        else:
+            return SynthesizableIntSet.INTSET_ENC_INT16
+
+    def _to_bytes(self, value):
+        """Wrapper around built-in int.to_bytes()
+        as we fixed our byte order and signedness.
+        Return integer list instead of byte array."""
+        return [int(i) for i in value.to_bytes(self._encoding, byteorder='big', signed=True)]
+
+    def __getitem__(self, pos, encoding):
+        """Return the value at pos, using the configured encoding.
+        Note that pos is in terms of the set visible to the user,
+        it is not the location in self._contents (i.e., pos would
+        correspond to self._length)."""
+        return SynthesizableIntSet._from_bytes(self._contents[pos*encoding:(pos+1)*encoding])
+
+    def __setitem__(self, pos, value, encoding):
+        """Set the value at pos using the configured encoding.
+        Note that pos is in terms of the set visible to the user,
+        it is not the location in self._contents (i.e., pos would
+        correspond to self._length)."""
+        byte_arr = self._to_bytes(value)
+        for i in range(pos*encoding, (pos+1)*encoding):
+            self._contents[i] = byte_arr[i-pos*encoding]
+
+    def __len__(self):
+        """Return the number of elements in the intSet."""
+        return self._length
+
+    def _search(self, value):
+        """Search for the position of "value". Returns a tuple (1, pos)
+        if the value was found and pos would be the position of the value
+        within the intSet (note that values are sorted); otherwise, return
+        (0, pos) if the value is not present in the intSet and pos is
+        the position where value can be inserted."""
+        if self._length == 0:
+            # We cannot find any value if intSet is empty
+            return 0, 0
+        else:
+            # Cases where we know we cannot find the
+            # value but we know the insertion position.
+            if value > self.__getitem__(self._length-1, self._encoding):
+                return 0, self._length
+            elif value < self.__getitem__(0, self._encoding):
+                return 0, 0
+
+        # Try to locate the position of the value in intSet using binary search
+        min_pos, max_pos, mid_pos = 0, self._length - 1, -1
+        while max_pos >= min_pos:
+            mid_pos = (min_pos + max_pos) >> 1
+            cur = self.__getitem__(mid_pos, self._encoding)
+            if value > cur:
+                min_pos = mid_pos + 1
+            elif value < cur:
+                max_pos = mid_pos - 1
+            else:
+                break
+
+        if value == cur:
+            return 1, mid_pos
+        else:
+            return 0, min_pos
+
+    def find(self, value):
+        """Determine whether value belongs to this intSet."""
+        value_encoding = SynthesizableIntSet._get_encoding(value)
+        return value_encoding <= self._encoding and self._search(value)[0]
+
+    def _upgrade_and_add(self, value):
+        """Upgrades the intSet to a larger encoding and inserts the given integer."""
+        # "prepend" is used to make sure we have an empty
+        # space at either the beginning or the end of intSet
+        prepend = 1 if value < 0 else 0
+
+        # Change the encoding and resize self._contents
+        old_encoding = self._encoding
+        self._encoding = SynthesizableIntSet._get_encoding(value)
+        # Size difference from existing elements: self._length * (self._encoding - old_encoding)
+        # Plus space for the added value: self._encoding
+        self._contents.extend([None] * (self._length * (self._encoding - old_encoding) + self._encoding))
+
+        # Upgrade back-to-front so we don't overwrite values.
+        for i in range(self._length-1, -1, -1):
+            self.__setitem__(i+prepend, self.__getitem__(i, old_encoding), self._encoding)
+        # Set value at the beginning or the end
+        if prepend:
+            self.__setitem__(0, value, self._encoding)
+        else:
+            self.__setitem__(self._length, value, self._encoding)
+        # Update the length after insertion
+        self._length += 1
+
+    def _move_tail(self, from_pos, to_pos):
+        """Move elements starting from from_pos position to
+        locations starting from to_pos position in intSet."""
+        bytes_to_move = (self._length - from_pos) * self._encoding
+        # src, dst are locations in self._contents
+        src = self._encoding * from_pos
+        dst = self._encoding * to_pos
+        # Move in different directions to avoid overwriting values
+        if src > dst:
+            for i in range(bytes_to_move):
+                self._contents[dst+i] = self._contents[src+i]
+        elif src < dst:
+            for i in range(bytes_to_move-1, -1, -1):
+                self._contents[dst+i] = self._contents[src+i]
+
+    def add(self, value):
+        """Insert an integer in intSet."""
+        value_encoding = SynthesizableIntSet._get_encoding(value)
+
+        # Upgrade encoding if necessary. If we need to upgrade, we know that
+        # this value should be either appended (if > 0) or prepended (if < 0),
+        # because it lies outside the range of existing values.
+        if value_encoding > self._encoding:
+            return self._upgrade_and_add(value)
+        else:
+            # Do nothing if value is already in the set
+            exist, pos = self._search(value)
+            if exist:
+                return
+            self._contents.extend([None] * self._encoding)
+            if pos < self._length:
+                self._move_tail(pos, pos+1)
+
+        self.__setitem__(pos, value, self._encoding)
+        self._length += 1
+
+    def delete(self, value):
+        """Delete an integer from intSet."""
+        value_encoding = SynthesizableIntSet._get_encoding(value)
+
+        if value_encoding <= self._encoding:
+            exist, pos = self._search(value)
+            if exist:
+                # Overwrite value with tail and update length
+                if pos < self._length-1:
+                    self._move_tail(pos+1, pos)
+                # Remove the last value represented in .contents
+                for i in range(self._encoding):
+                    self._contents.pop(len(self._contents)-1)
+                self._length -= 1
+
+    def __str__(self):
+        """The contents of intSet."""
+        set_str = "[ "
+        for i in range(self._length):
+            set_str += str(self.__getitem__(i, self._encoding)) + " "
+        set_str += "]"
+        return set_str
+
+
 def bst_test():
     bst = BinarySearchTree()
     bst.insert(UntrustedStr("Jake"), UntrustedInt(7))
@@ -640,8 +832,41 @@ def min_heap_test():
     print("After synthesis an intermediate node:\n{mh}".format(mh=mh))
 
 
+def int_set_test():
+    int_set = SynthesizableIntSet()
+    int_set.add(5)
+    int_set.add(30)
+    int_set.add(-7)
+    int_set.add(14)
+    int_set.add(5)
+    # We should not have access to _contents but it is OK for testing
+    print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
+    int_set.add(35267)
+    # We expect the intSet to take more space now (int16 -> int32)
+    print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
+    int_set.add(2_447_483_647)
+    # We expect the intSet to take even more space now (int32 -> int64)
+    print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
+    int_set.add(-335267)
+    int_set.add(-2_447_483_747)
+    print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
+    print("45 is in the set: {}".format(int_set.find(45)))
+    print("35267 is in the set: {}".format(int_set.find(35267)))
+    print("-335267 is in the set: {}".format(int_set.find(-335267)))
+    # Delete does not "downgrading" encoding in Redis
+    int_set.delete(0)
+    int_set.delete(30)
+    print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
+    int_set.delete(-2447483747)
+    print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
+    int_set.delete(2447483647)
+    print("{set} ({bytes} bytes)".format(set=int_set, bytes=len(int_set._contents)))
+
+
 if __name__ == "__main__":
-    bst_test()
-    hash_table_test()
-    sorted_list_test()
-    min_heap_test()
+    # bst_test()
+    # hash_table_test()
+    # sorted_list_test()
+    # min_heap_test()
+    int_set_test()
+
