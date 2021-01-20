@@ -96,6 +96,13 @@ class BinarySearchTree(object):
         else:
             return False
 
+    def get(self, key):
+        """If the BST has both a key and a value in a node,
+        returns the value for a given key if the key exists.
+        Otherwise, return None."""
+        n = self.find(key)
+        return n.val
+
     def find(self, key_or_val):
         """Return the node if value (or key if exists) is in the
         tree; otherwise, return None. This is the public API to
@@ -425,6 +432,10 @@ class SynthesizableHashTable(object):
         """The size of the hash table."""
         return sum([len(sublist) for sublist in self._hash_table])
 
+    def __contains__(self, item):
+        """Called when using the in operator."""
+        return item in self.keys()
+
     def synthesis(self, key):
         """Synthesize a given key in the hash table only if key already
         exists in the hash table. The synthesized key must ensure that
@@ -473,6 +484,17 @@ class SynthesizableMinHeap(object):
     def pop(self):
         """Pop the smallest item off the heap, while maintaining heap invariant."""
         return heapq.heappop(self._heap)
+
+    def peek(self):
+        """Return the smallest item from the heap (if exists),
+        without popping it out. Otherwise, return None."""
+        if len(self._heap) > 0:
+            return self._heap[0]
+        return None
+
+    def to_list(self):
+        """Return a list of all elements in the heap."""
+        return self._heap
 
     def synthesize(self, index):
         """Synthesize a new value at index without invalidating heap invariant.
