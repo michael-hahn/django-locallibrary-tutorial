@@ -778,7 +778,7 @@ class SynthesizableIntSet(IntSet):
                                                      type=type(value)))
         synthesized = value.synthesized
         byte_arr = [UntrustedInt(i, synthesized=synthesized)
-                    for i in int(value).to_bytes(self._encoding, byteorder='big', signed=True)]
+                    for i in value.to_bytes(self._encoding, byteorder='big', signed=True)]
         for i in range(pos*encoding, (pos+1)*encoding):
             self._contents[i] = byte_arr[i-pos*encoding]
 
