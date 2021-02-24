@@ -2,7 +2,11 @@ from django.shortcuts import render
 
 # Create your views here.
 
-from .models import Book, Author, BookInstance, Genre
+from .models import Book, Author, BookInstance, Genre, SignUp
+
+# from catalog.cache import NameAgeBst, NameDateBst, NameSortedList, AgeMinHeap, NameGPAHashTable
+from catalog.forms import SignUpForm, RemoveForm
+from django.splice.splicetypes import SpliceStr, SpliceInt
 
 
 def index(request):
@@ -125,12 +129,6 @@ def renew_book_librarian(request, pk):
     return render(request, 'catalog/book_renew_librarian.html', context)
 
 
-from catalog.cache import sign_up_sheet
-from catalog.forms import SignUpForm, RemoveForm
-from django.core.untrustedtypes import UntrustedInt, UntrustedStr
-
-
-@login_required
 def signup(request):
     """View function for user signup in the sign-up form."""
     # If this is a POST request then process the Form data
@@ -141,9 +139,26 @@ def signup(request):
         # Check if the form is valid:
         if form.is_valid():
             # process the data in form.cleaned_data as required
-            sign_up_sheet.insert(UntrustedInt(form.cleaned_data['age']),
-                                 UntrustedStr(form.cleaned_data['name']))
+            # bst = NameAgeBst(name=form.cleaned_data['name'],
+            #                  age=form.cleaned_data['age'],
+            #                  key="name")
+            # bst.save()
+            # bst = NameDateBst(name=form.cleaned_data['name'],
+            #                   date=form.cleaned_data['date'],
+            #                   key="name")
+            # bst.save()
+            # sl = NameSortedList(name=form.cleaned_data['name'])
+            # sl.save()
+            # mh = AgeMinHeap(age=form.cleaned_data['age'])
+            # mh.save()
+            # ht = NameGPAHashTable(name=form.cleaned_data['name'],
+            #                       gpa=form.cleaned_data['gpa'],
+            #                       key="name")
+            # ht.save()
+            sign_up_model = SignUp(name=SpliceStr(form.cleaned_data['name']),
+                                   age=SpliceInt(form.cleaned_data['age']))
 
+            sign_up_model.save()
             # redirect to a new URL:
             return HttpResponseRedirect(reverse('signup'))
 
@@ -160,42 +175,108 @@ def signup(request):
 
 def signup_delete(request):
     """View function for user removing their name from the sign-up form."""
-    # If this is a POST request then process the Form data
-    if request.method == 'POST':
-        # Create a form instance and populate it with data from the request (binding):
-        form = RemoveForm(request.POST)
+    pass
+    # # If this is a POST request then process the Form data
+    # if request.method == 'POST':
+    #     # Create a form instance and populate it with data from the request (binding):
+    #     form = RemoveForm(request.POST)
+    #
+    #     # Check if the form is valid:
+    #     if form.is_valid():
+    #         # process the data in form.cleaned_data as required
+    #         name = form.cleaned_data['name']
+    #         age = NameAgeBst.objects.get(name)
+    #         NameAgeBst.objects.delete(name)
+    #         NameDateBst.objects.delete(name)
+    #         NameSortedList.objects.delete(name)
+    #         # age_min_heap cannot perform deletion
+    #         NameGPAHashTable.objects.delete(name)
+    #
+    #         # redirect to a new URL:
+    #         return HttpResponseRedirect(reverse('signup'))
+    #
+    # # If this is a GET (or any other method) create the default form
+    # else:
+    #     form = RemoveForm()
+    #
+    # context = {
+    #     'form': form,
+    # }
+    #
+    # return render(request, 'catalog/signup_delete.html', context)
 
-        # Check if the form is valid:
-        if form.is_valid():
-            # process the data in form.cleaned_data as required
-            sign_up_sheet.delete(form.cleaned_data['name'])
 
-            # redirect to a new URL:
-            return HttpResponseRedirect(reverse('signup'))
-
-    # If this is a GET (or any other method) create the default form
-    else:
-        form = RemoveForm()
-
-    context = {
-        'form': form,
-    }
-
-    return render(request, 'catalog/signup_delete.html', context)
+class SignupList(generic.ListView):
+    """Generic class-based list view for a list of authors."""
+    model = SignUp
+    paginate_by = 10
+    template_name = "catalog/signup_list.html"
 
 
 def signup_list(request):
-    """View function for displaying users who have signed up."""
-    sign_ups = list()
-    sign_up_sheet.to_ordered_list(sign_up_sheet.root, sign_ups)
-
-    # Render the HTML template signup.html with the data in the context variable.
-    return render(
-        request,
-        'catalog/signup_list.html',
-        context={'signups': sign_ups,
-                 },
-    )
+    pass
+#     """View function for displaying users who have signed up."""
+    # sign_ups = list()
+    # for name, age in NameAgeBst.objects:
+    #     if isinstance(name, UntrustedMixin):
+    #         if not name.synthesized:
+    #             name = name.to_trusted()
+    #         else:
+    #             # If name is synthesized, do not use
+    #             continue
+    #     # same goes for age
+    #     if isinstance(age, UntrustedMixin):
+    #         if age.synthesized:
+    #             continue
+    #         else:
+    #             age = age.to_trusted()
+    #     date = NameDateBst.objects.get(name)
+    #     if isinstance(date, UntrustedMixin):
+    #         if not date.synthesized:
+    #             date = date.to_trusted()
+    #         else:
+    #             continue
+    #     if name in NameGPAHashTable.objects:
+    #         gpa = NameGPAHashTable.objects.get(name)
+    #         if isinstance(gpa, UntrustedMixin):
+    #             if not gpa.synthesized:
+    #                 gpa = gpa.to_trusted()
+    #             else:
+    #                 continue
+    #         sign_ups.append((name, age, gpa, date))
+    #     else:
+    #         sign_ups.append((name, age, None, date))
+    #
+    # sorted_names = NameSortedList.objects
+    # trusted_sorted_names = []
+    # for name in sorted_names:
+    #     if isinstance(name, UntrustedMixin):
+    #         if not name.synthesized:
+    #             trusted_sorted_names.append(name.to_trusted())
+    #     else:
+    #         trusted_sorted_names.append(name)
+    # youngest_age = None
+    # while AgeMinHeap.objects:
+    #     youngest_age = AgeMinHeap.objects.get()
+    #     if isinstance(youngest_age, UntrustedMixin):
+    #         if not youngest_age.synthesized:
+    #             youngest_age = youngest_age.to_trusted()
+    #             break
+    #         else:
+    #             youngest_age = None
+    #             AgeMinHeap.objects.pop()
+    #     else:
+    #         break
+    #
+    # # Render the HTML template signup.html with the data in the context variable.
+    # return render(
+    #     request,
+    #     'catalog/signup_list.html',
+    #     context={'signups': sign_ups,
+    #              'sorted_names': trusted_sorted_names,
+    #              'youngest_age': youngest_age,
+    #              },
+    # )
 
 
 from django.contrib import auth
@@ -203,8 +284,15 @@ from django.contrib import auth
 
 def logout(request):
     user_name = request.user.username
-    node = sign_up_sheet.find(user_name)
-    sign_up_sheet.synthesize(node)
+    # try:
+    #     i = NameSortedList.objects.find(user_name)
+    #     NameSortedList.objects.synthesize(i)
+    # except ValueError as e:
+    #     pass
+    #
+    # NameAgeBst.objects.synthesize(user_name)
+    # NameDateBst.objects.synthesize(user_name)
+    # NameGPAHashTable.objects.synthesize(user_name)
 
     auth.logout(request)
     return render(request,

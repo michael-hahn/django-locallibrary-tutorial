@@ -122,3 +122,11 @@ class Author(models.Model):
     def __str__(self):
         """String for representing the Model object."""
         return '{0}, {1}'.format(self.last_name, self.first_name)
+
+
+from django.splice.fields import SpliceCharField
+
+
+class SignUp(models.Model):
+    name = SpliceCharField(max_length=200, null=True)
+    age = models.IntegerField(null=True)

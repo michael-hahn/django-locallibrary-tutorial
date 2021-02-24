@@ -41,7 +41,8 @@ urlpatterns += [
 
 # Add URLConf for use sign up or remove user from a sign up sheet
 urlpatterns += [
-    path('signup/', views.signup_list, name='signup'),
+    # path('signup/', views.signup_list, name='signup'),
+    path('signup/', views.SignupList.as_view(), name='signup'),
     path('signup/new/', views.signup, name='new-signup'),
     path('signup/delete/', views.signup_delete, name='delete-signup'),
 ]

@@ -3,18 +3,39 @@
 {% block content %}
     <h1>Sign-up List</h1>
 
-    {% if signups %}
+{#    {% if signups %}#}
+    {% if signup_list %}
     <ul>
 
-      {% for person in signups %}
-      <li>
+{#      {% for name, age, gpa, date in signups %}#}
+{#      <li>#}
 {#        <a href="{{ book.get_absolute_url }}">{{ book.title }}</a> ({{book.author}})#}
-          Name: {{ person.key }} [Synthesized: {% if person.key.synthesized %}True{% else %}False{% endif %}]
-          (Age: {{ person.val }})
+{#          Name: {{ name }}#}
+{#          (Age: {{ age }}, GPA: {{ gpa }}, Graduation Date: {{ date }})#}
+{#      </li>#}
+        {% for signup in signup_list %}
+      <li>
+          Name: {{ signup.name }} (Synthesized: {{ signup.name_synthesized }})<br />
+
+          Age: {{ signup.age }}
       </li>
       {% endfor %}
 
     </ul>
+
+{#    <h4>Participants (Sorted)</h4>#}
+{#    <ul>#}
+{##}
+{#      {% for name in sorted_names %}#}
+{#      <li>#}
+{#          {{ name }} [Synthesized: {% if name.synthesized %}True{% else %}False{% endif %}]#}
+{#            {{ name }}#}
+{#      </li>#}
+{#      {% endfor %}#}
+{##}
+{#    </ul>#}
+{##}
+{#    <h4> Youngest age: {% if youngest_age %}{{ youngest_age }}{% else %}-{% endif %} </h4>#}
 
     {% else %}
       <p>No one signed up so far.</p>
